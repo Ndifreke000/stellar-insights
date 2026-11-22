@@ -3,6 +3,7 @@
 import React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ReactQueryProvider } from '@/lib/react-query/provider';
+import { RealtimeProvider } from '@/contexts/RealtimeContext';
 import { useAppStore } from '@/lib/zustand/store';
 import { logger } from '@/lib/logger';
 
@@ -41,8 +42,10 @@ interface StateProviderProps {
 export function StateProvider({ children }: StateProviderProps) {
   return (
     <ReactQueryProvider>
-      {children}
-      {process.env.NODE_ENV === 'development' && <StateDevTools />}
+      <RealtimeProvider>
+        {children}
+        {process.env.NODE_ENV === 'development' && <StateDevTools />}
+      </RealtimeProvider>
     </ReactQueryProvider>
   );
 }

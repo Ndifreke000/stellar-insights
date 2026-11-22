@@ -56,10 +56,11 @@ impl Default for RetentionConfig {
 
 impl RetentionConfig {
     /// Get retention config for a table.
-    pub fn get_table_config(&self, table: &str) -> &TableRetention {
+    pub fn get_table_config(&self, table: &str) -> TableRetention {
         self.table_configs
             .get(table)
-            .unwrap_or(&TableRetention {
+            .cloned()
+            .unwrap_or(TableRetention {
                 days: self.default_days,
                 batch_size: 1000,
                 sleep_ms: 100,

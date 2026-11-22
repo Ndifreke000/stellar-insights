@@ -563,7 +563,7 @@ mod tests {
         let ws_state = Arc::new(crate::websocket::WsState::new());
         build_schema_with_limits(
             Arc::new(pool),
-            tx,
+            ws_state,
             GraphqlLimits {
                 max_depth: 3,
                 max_complexity: 50,

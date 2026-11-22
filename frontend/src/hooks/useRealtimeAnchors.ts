@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from "react";
-import { useWebSocket, WsMessage } from "./useWebSocket";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useWebSocket, type WsMessage } from "./useWebSocket";
 import { logger } from "@/lib/logger";
 
 export interface AnchorUpdate {
@@ -33,38 +33,47 @@ export function useRealtimeAnchors(
     new Map(),
   );
 
-  // Get WebSocket URL from environment or default
-  const wsUrl = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080/ws";
+  const onAnchorUpdateRef = useRef(onAnchorUpdate);
+  useEffect(() => {
+    onAnchorUpdateRef.current = onAnchorUpdate;
+  });
 
-  const handleMessage = useCallback(
-    (message: WsMessage) => {
-      switch (message.type) {
-        case "anchor_update":
-          const anchorUpdate = message as unknown as AnchorUpdate;
-          setAnchorUpdates((prev) => {
-            const newMap = new Map(prev);
-            newMap.set(anchorUpdate.anchor_id, anchorUpdate);
-            return newMap;
-          });
-          onAnchorUpdate?.(anchorUpdate);
-          break;
-
-        case "subscription_confirm":
-          logger.debug("Anchor subscription confirmed:", message);
-          break;
-
-        case "ping":
-          // Handle ping/pong automatically
-          break;
-
-        default:
-          // Ignore other message types
-          break;
-      }
-    },
-    [onAnchorUpdate],
+  const stableAnchorIdsStr = useMemo(
+    () => Array.from(new Set(anchorIds.filter(Boolean))).sort().join("\0"),
+    [anchorIds],
   );
 
+  const channels = useMemo(() => {
+    if (!stableAnchorIdsStr) {
+      return ["anchors"];
+    }
+    return stableAnchorIdsStr.split("\0").map((id) => `anchor:${id}`);
+  }, [stableAnchorIdsStr]);
+
+  const handleMessage = useCallback((message: WsMessage) => {
+    switch (message.type) {
+      case "anchor_update": {
+        const anchorUpdate = message as unknown as AnchorUpdate;
+        if (!anchorUpdate.anchor_id) return;
+        setAnchorUpdates((prev) => {
+          const newMap = new Map(prev);
+          newMap.set(anchorUpdate.anchor_id, anchorUpdate);
+          return newMap;
+        });
+        onAnchorUpdateRef.current?.(anchorUpdate);
+        break;
+      }
+
+      case "subscription_confirm":
+        logger.debug("Anchor subscription confirmed:", message);
+        break;
+
+      default:
+        break;
+    }
+  }, []);
+
+  // Shares the single tab WebSocket client via RealtimeContext.
   const {
     isConnected,
     isConnecting,
@@ -72,17 +81,14 @@ export function useRealtimeAnchors(
     subscribe,
     unsubscribe,
     reconnect,
-  } = useWebSocket(wsUrl, {
+  } = useWebSocket(undefined, {
+    channels,
     onMessage: handleMessage,
     onOpen: () => {
-      logger.debug("Connected to anchor WebSocket");
-      // Re-subscribe to anchors on reconnection
-      if (anchorIds.length > 0) {
-        subscribeToAnchors(anchorIds);
-      }
+      logger.debug("Connected to shared anchor realtime stream");
     },
     onClose: () => {
-      logger.debug("Disconnected from anchor WebSocket");
+      logger.debug("Disconnected from shared anchor realtime stream");
     },
     onError: (error) => {
       logger.error("Anchor WebSocket error:", error);
@@ -91,26 +97,17 @@ export function useRealtimeAnchors(
 
   const subscribeToAnchors = useCallback(
     (ids: string[]) => {
-      const channels = ids.map((id) => `anchor:${id}`);
-      subscribe(channels);
+      subscribe(ids.map((id) => `anchor:${id}`));
     },
     [subscribe],
   );
 
   const unsubscribeFromAnchors = useCallback(
     (ids: string[]) => {
-      const channels = ids.map((id) => `anchor:${id}`);
-      unsubscribe(channels);
+      unsubscribe(ids.map((id) => `anchor:${id}`));
     },
     [unsubscribe],
   );
-
-  // Subscribe to initial anchors when connected
-  useEffect(() => {
-    if (isConnected && anchorIds.length > 0) {
-      subscribeToAnchors(anchorIds);
-    }
-  }, [isConnected, anchorIds, subscribeToAnchors]);
 
   return {
     isConnected,

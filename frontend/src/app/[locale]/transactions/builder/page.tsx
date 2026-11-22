@@ -6,7 +6,8 @@ import {
   SignatureCollector,
   Signature,
 } from "@/components/transactions/SignatureCollector";
-import { Hexagon } from "lucide-react";
+import { Hexagon, ArrowLeft } from "lucide-react";
+import { Link } from "@/i18n/navigation";
 import { useWallet } from "@/components/lib/wallet-context";
 import { config } from "@/config";
 
@@ -96,6 +97,13 @@ export default function TransactionsBuilderPage() {
       <div className="max-w-4xl mx-auto space-y-8">
         {/* Header Section */}
         <div className="flex flex-col mb-10">
+          <Link
+            href="/transactions"
+            className="inline-flex items-center gap-1.5 text-xs font-mono text-slate-400 hover:text-indigo-300 mb-4 w-fit transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" />
+            Back to Live Transactions
+          </Link>
           <div className="flex items-center gap-3 mb-2">
             <div className="p-2.5 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/20">
               <Hexagon className="w-6 h-6 text-indigo-400" />

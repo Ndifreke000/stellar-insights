@@ -33,7 +33,7 @@ const SCHEDULER_BATCH: i64 = 10;
 
 // ── Certificate types ────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
 pub struct ErasureStepRecord {
     pub store: String,
     pub status: String,
@@ -42,7 +42,7 @@ pub struct ErasureStepRecord {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
 pub struct ErasureCertificate {
     pub certificate_version: u32,
     pub request_id: String,
@@ -118,7 +118,7 @@ async fn erase_sqlite(
     for &(table, column) in DELETE_TABLES {
         // Table/column names are compile-time constants; user_id is bound.
         let sql = format!("DELETE FROM {table} WHERE {column} = ?");
-        match sqlx::query(&sql).bind(user_id).execute(&mut *tx).await {
+        match sqlx::query(sqlx::AssertSqlSafe(sql)).bind(user_id).execute(&mut *tx).await {
             Ok(r) => total += r.rows_affected() as i64,
             Err(e) => {
                 notes.push(format!("{table}: skipped ({e})"));
@@ -129,7 +129,7 @@ async fn erase_sqlite(
 
     for &table in ANONYMIZE_TABLES {
         let sql = format!("UPDATE {table} SET user_id = 'erased' WHERE user_id = ?");
-        match sqlx::query(&sql).bind(user_id).execute(&mut *tx).await {
+        match sqlx::query(sqlx::AssertSqlSafe(sql)).bind(user_id).execute(&mut *tx).await {
             Ok(r) => total += r.rows_affected() as i64,
             Err(e) => notes.push(format!("{table}: skipped ({e})")),
         }
@@ -205,7 +205,7 @@ async fn erase_notification_stores(pool: &SqlitePool, user_id: &str) -> Result<S
             "DELETE FROM {table} WHERE {}",
             predicates.join(" OR ")
         );
-        let mut q = sqlx::query(&sql);
+        let mut q = sqlx::query(sqlx::AssertSqlSafe(sql));
         for _ in &predicates {
             q = q.bind(user_id);
         }
@@ -337,16 +337,20 @@ impl ErasureService {
 
         let uid_keys = user_id.clone();
         let keys_svc = self.user_keys.clone();
-        let stores: Vec<(&str, Box<dyn std::future::Future<Output = Result<StoreOutcome>> + Send + '_>)> =
-            vec![
-                (
-                    "sqlite",
-                    Box::new(erase_sqlite(&self.pool, &user_id, request_id)),
-                ),
-                ("notifications", Box::new(erase_notification_stores(&self.pool, &user_id))),
-                ("redis", Box::new(erase_redis(&user_id))),
-                // Crypto-shred runs last: nothing afterwards needs the DEK.
-                ("keys", Box::new(async move {
+        let stores: Vec<(
+            &str,
+            std::pin::Pin<Box<dyn std::future::Future<Output = Result<StoreOutcome>> + Send + '_>>,
+        )> = vec![
+            (
+                "sqlite",
+                Box::pin(erase_sqlite(&self.pool, &user_id, request_id)),
+            ),
+            ("notifications", Box::pin(erase_notification_stores(&self.pool, &user_id))),
+            ("redis", Box::pin(erase_redis(&user_id))),
+            // Crypto-shred runs last: nothing afterwards needs the DEK.
+            (
+                "keys",
+                Box::pin(async move {
                     let shredded = keys_svc.destroy(&uid_keys).await?;
                     Ok(StoreOutcome {
                         rows_affected: i64::from(shredded),
@@ -356,8 +360,9 @@ impl ErasureService {
                             "no per-user data key present".to_string()
                         }),
                     })
-                })),
-            ];
+                }),
+            ),
+        ];
 
         for (name, fut) in stores {
             let step_id = Uuid::new_v4().to_string();
@@ -558,13 +563,15 @@ impl ErasureService {
             let id: String = row.get("id");
             let scheduled: Option<String> = row.get("scheduled_deletion_at");
             let due = scheduled
-                .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+                .as_deref()
+                .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
                 .map(|d| d.with_timezone(&Utc) <= now)
                 .unwrap_or(false);
             // Also accept SQLite datetime('now') format as a fallback.
             let due = due
                 || scheduled
-                    .and_then(|s| chrono::NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M:%S").ok())
+                    .as_deref()
+                    .and_then(|s| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").ok())
                     .map(|d| d.and_utc() <= now)
                     .unwrap_or(false);
             if !due {
@@ -691,7 +698,9 @@ mod tests {
 
         // All user rows gone / anonymized.
         for t in ["sessions", "user_consents"] {
-            let n: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {t} WHERE user_id = 'u1'"))
+            let n: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+                "SELECT COUNT(*) FROM {t} WHERE user_id = 'u1'"
+            )))
                 .fetch_one(&pool)
                 .await
                 .unwrap();

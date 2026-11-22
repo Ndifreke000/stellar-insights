@@ -7,7 +7,8 @@
 
 use std::collections::HashMap;
 
-use unicode_normalizer::UnicodeNormalization;
+use serde::{Deserialize, Serialize};
+use unicode_normalization::UnicodeNormalization;
 use unicode_segmentation::UnicodeSegmentation;
 
 /// Edit distance algorithm for similarity comparison
@@ -125,9 +126,11 @@ impl HomoglyphDetector {
         }
 
         for (c1, c2) in d1_chars.iter().zip(d2_chars.iter()) {
+            let s1 = c1.to_string();
+            let s2 = c2.to_string();
             let is_similar = Self::HOMOGLYPHS
                 .iter()
-                .any(|&(a, b)| a == *c1.to_string() && b == *c2.to_string());
+                .any(|&(a, b)| a == s1.as_str() && b == s2.as_str());
 
             if !is_similar && c1 != c2 {
                 return false;

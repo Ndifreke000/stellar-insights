@@ -4,9 +4,6 @@ pub mod alerts;
 pub mod analytics;
 pub mod api;
 pub mod api_analytics_middleware;
-pub mod api_deprecation_middleware;
-pub mod api_v1_middleware;
-pub mod deprecation_middleware;
 pub mod distributed_lock;
 
 pub use distributed_lock::{FencingToken, instance_id, DistributedLock, LockGuard};

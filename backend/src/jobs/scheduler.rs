@@ -5,8 +5,6 @@ use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
 use crate::distributed_lock::DistributedLock;
-use crate::jobs::persistence::{CatchUpPolicy, JobPersistence};
-use crate::jobs::JobConfig;
 use crate::observability::job_metrics::JobMetricsCollector;
 
 use crate::cache::CacheManager;
@@ -15,11 +13,10 @@ use crate::ingestion::DataIngestionService;
 use crate::rpc::StellarRpcClient;
 use crate::services::price_feed::PriceFeedClient;
 
-pub mod config;
-pub mod persistence;
-
-pub use config::{UpdateJobConfigRequest, JobConfigResponse, ScheduleRunRequest, ScheduleRunResponse};
-pub use persistence::{CatchUpPolicy, JobPersistence};
+pub use crate::jobs::config::{
+    JobConfigResponse, ScheduleRunRequest, ScheduleRunResponse, UpdateJobConfigRequest,
+};
+pub use crate::jobs::persistence::{CatchUpPolicy, JobPersistence};
 
 #[derive(Clone)]
 pub struct JobConfig {
@@ -53,8 +50,8 @@ impl JobConfig {
 
 pub struct JobScheduler {
     handles: Vec<JoinHandle<()>>,
-    pool: Database,
-    persistence: Arc<JobPersistence>,
+    pool: Option<Arc<Database>>,
+    persistence: Option<Arc<JobPersistence>>,
 }
 
 impl Default for JobScheduler {
@@ -68,16 +65,8 @@ impl JobScheduler {
     pub const fn new() -> Self {
         Self {
             handles: Vec::new(),
-            pool: Database::new(sqlx::SqlitePool::connect_with(
-                &mut sqlx::sqlite::SqliteConnectOptions::new()
-                    .memory()
-                    .create_if_missing(true),
-            ).await.unwrap_or_else(|_| unreachable!("Memory DB for tests"))),
-            persistence: Arc::new(JobPersistence::new(sqlx::SqlitePool::connect_with(
-                &mut sqlx::sqlite::SqliteConnectOptions::new()
-                    .memory()
-                    .create_if_missing(true),
-            ).await.unwrap_or_else(|_| unreachable!("Memory DB for tests")))),
+            pool: None,
+            persistence: None,
         }
     }
 
@@ -85,8 +74,8 @@ impl JobScheduler {
     pub fn with_pool(db: Arc<Database>, persistence: Arc<JobPersistence>) -> Self {
         Self {
             handles: Vec::new(),
-            pool: db.as_ref().clone(),
-            persistence,
+            pool: Some(db),
+            persistence: Some(persistence),
         }
     }
 
@@ -94,6 +83,7 @@ impl JobScheduler {
     where
         F: Fn() -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send>>
             + Send
+            + Sync
             + 'static,
     {
         if !config.enabled {
@@ -106,30 +96,32 @@ impl JobScheduler {
             config.name, config.interval_seconds, config.catch_up_policy
         );
 
+        let persistence = self.persistence.clone();
         let handle = tokio::spawn(async move {
             let lock = DistributedLock::shared().await;
-            let persistence = Arc::clone(&self.persistence);
             let interval = Duration::from_secs(config.interval_seconds);
             let job_name = config.name.clone();
             let job_fn = Arc::new(job_fn);
 
             loop {
                 // Check for missed runs based on catch-up policy
-                match persistence.find_missed_runs(&job_name, chrono::Utc::now()).await {
-                    Ok(missed) => {
-                        for scheduled_for in missed {
-                            match persistence.get_or_create_run(&job_name, scheduled_for).await {
-                                Ok(mut run) => {
-                                    run.skip();
-                                    if let Err(e) = persistence.fail_run(run.id, "Skipped by catch-up policy").await {
-                                        warn!("Failed to record skipped run: {}", e);
+                if let Some(ref persistence) = persistence {
+                    match persistence.find_missed_runs(&job_name, chrono::Utc::now()).await {
+                        Ok(missed) => {
+                            for scheduled_for in missed {
+                                match persistence.get_or_create_run(&job_name, scheduled_for).await {
+                                    Ok(mut run) => {
+                                        run.skip();
+                                        if let Err(e) = persistence.fail_run(run.id, "Skipped by catch-up policy").await {
+                                            warn!("Failed to record skipped run: {}", e);
+                                        }
                                     }
+                                    Err(e) => warn!("Failed to get or create run: {}", e),
                                 }
-                                Err(e) => warn!("Failed to get or create run: {}", e),
                             }
                         }
+                        Err(e) => warn!("Failed to find missed runs: {}", e),
                     }
-                    Err(e) => warn!("Failed to find missed runs: {}", e),
                 }
 
                 // Wait for next interval
@@ -190,13 +182,15 @@ impl JobScheduler {
         ingestion: Arc<DataIngestionService>,
         price_feed: Arc<PriceFeedClient>,
     ) -> Self {
-        let pool = db.as_ref().clone();
-        let persistence = Arc::new(JobPersistence::new(pool.clone()));
-        
-        // Initialize job configs
-        if let Err(e) = persistence.initialize_job_configs().await {
-            warn!("Failed to initialize job configs: {}", e);
-        }
+        let persistence = Arc::new(JobPersistence::new(db.pool().clone()));
+
+        // Initialize job configs asynchronously on the active runtime.
+        let init_persistence = Arc::clone(&persistence);
+        tokio::spawn(async move {
+            if let Err(e) = init_persistence.initialize_job_configs().await {
+                warn!("Failed to initialize job configs: {}", e);
+            }
+        });
 
         let mut scheduler = Self::with_pool(db, persistence);
 

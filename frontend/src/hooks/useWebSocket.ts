@@ -1,21 +1,24 @@
-import { useEffect, useRef, useState, useCallback } from "react";
-import { logger } from "@/lib/logger";
+import {
+  useEffect,
+  useRef,
+  useCallback,
+  useSyncExternalStore,
+} from "react";
+import { useRealtimeClient } from "@/contexts/RealtimeContext";
+import {
+  ConnectionState,
+  type WsMessage,
+} from "@/lib/websocket";
 
-export enum ConnectionState {
-  DISCONNECTED = "DISCONNECTED",
-  CONNECTING = "CONNECTING",
-  CONNECTED = "CONNECTED",
-  RECONNECTING = "RECONNECTING",
-}
-
-export interface WsMessage {
-  type: string;
-  [key: string]: string | number | boolean | null | undefined | string[] | Record<string, unknown>;
-}
+export { ConnectionState, type WsMessage };
 
 export interface UseWebSocketOptions {
   reconnectInterval?: number;
   maxReconnectAttempts?: number;
+  maxReconnectDelay?: number;
+  backoffFactor?: number;
+  /** Initial channels to acquire on mount and release on unmount. */
+  channels?: string[];
   onOpen?: () => void;
   onClose?: () => void;
   onError?: (error: Event) => void;
@@ -25,6 +28,7 @@ export interface UseWebSocketOptions {
 export interface UseWebSocketReturn {
   isConnected: boolean;
   isConnecting: boolean;
+  connectionState: ConnectionState;
   lastMessage: WsMessage | null;
   connectionAttempts: number;
   send: (message: WsMessage) => void;
@@ -33,280 +37,167 @@ export interface UseWebSocketReturn {
   reconnect: () => void;
 }
 
+/**
+ * Subscribe to the shared tab-wide [`RealtimeClient`] via context (Issue #2834).
+ *
+ * Multiple components invoking `useWebSocket` share a single underlying
+ * WebSocket connection with reference-counted channel subscriptions and
+ * automatic cleanup on unmount.
+ */
 export function useWebSocket(
-  url: string,
+  url?: string,
   options: UseWebSocketOptions = {},
 ): UseWebSocketReturn {
   const {
-    reconnectInterval = 3000,
-    maxReconnectAttempts = 5,
+    reconnectInterval,
+    maxReconnectAttempts,
+    maxReconnectDelay,
+    backoffFactor,
+    channels: initialChannels,
     onOpen,
     onClose,
     onError,
     onMessage,
   } = options;
 
-  const [isConnected, setIsConnected] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [lastMessage, setLastMessage] = useState<WsMessage | null>(null);
-  const [connectionAttempts, setConnectionAttempts] = useState(0);
-  const [_connectionState, setConnectionState] = useState<ConnectionState>(
-    ConnectionState.DISCONNECTED
+  const client = useRealtimeClient(url);
+
+  // Propagate caller timing overrides (e.g. fast reconnect intervals in tests).
+  useEffect(() => {
+    if (
+      reconnectInterval !== undefined ||
+      maxReconnectAttempts !== undefined ||
+      maxReconnectDelay !== undefined ||
+      backoffFactor !== undefined
+    ) {
+      client.configure({
+        reconnectInterval,
+        maxReconnectAttempts,
+        maxReconnectDelay,
+        backoffFactor,
+      });
+    }
+  }, [
+    client,
+    reconnectInterval,
+    maxReconnectAttempts,
+    maxReconnectDelay,
+    backoffFactor,
+  ]);
+
+  const snapshot = useSyncExternalStore(
+    client.subscribeState,
+    client.getSnapshot,
+    client.getSnapshot,
   );
 
-  const [appState, setAppState] = useState<"active" | "background">("active");
-  const appStateRef = useRef<"active" | "background">("active");
+  // Track channels owned by THIS hook instance so repeated subscribe calls
+  // from the same hook stay idempotent and every channel is released on unmount.
+  const ownedChannelsRef = useRef<Set<string>>(new Set());
 
+  const callbacksRef = useRef({ onOpen, onClose, onError, onMessage });
   useEffect(() => {
-    appStateRef.current = appState;
-  }, [appState]);
-
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const shouldReconnectRef = useRef(true);
-  const isConnectingRef = useRef(false);
-  const connectionAttemptsRef = useRef(0);
-  const optionsRef = useRef({ onOpen, onClose, onError, onMessage });
-  useEffect(() => {
-    optionsRef.current = { onOpen, onClose, onError, onMessage };
+    callbacksRef.current = { onOpen, onClose, onError, onMessage };
   });
 
-  // Channels the caller has asked to be subscribed to. Persisted across
-  // reconnects so we can restore subscriptions once the socket reopens.
-  const activeChannelsRef = useRef<Set<string>>(new Set());
-
-  // Holds the latest `connect` so the reconnect timeout below can call it
-  // without referencing `connect` before it's declared.
-  const connectRef = useRef<() => void>(() => {});
-
-  const connect = useCallback(() => {
-    if (isConnectingRef.current) {
-      return;
-    }
-
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      return;
-    }
-
-    // Close any lingering socket before creating a new one
-    if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
-      wsRef.current.onclose = null;
-      wsRef.current.onerror = null;
-      wsRef.current.onmessage = null;
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-
-    isConnectingRef.current = true;
-    setIsConnecting(true);
-
-    try {
-      const ws = new WebSocket(url);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        logger.debug("WebSocket connected");
-        setIsConnected(true);
-        setIsConnecting(false);
-        setConnectionState(ConnectionState.CONNECTED);
-        connectionAttemptsRef.current = 0;
-        setConnectionAttempts(0);
-        isConnectingRef.current = false;
-
-        // Restore subscriptions that were active before this (re)connect.
-        if (activeChannelsRef.current.size > 0) {
-          logger.debug("Resubscribing to channels after (re)connect");
-          ws.send(
-            JSON.stringify({
-              type: "subscribe",
-              channels: Array.from(activeChannelsRef.current),
-            }),
-          );
-        }
-
-        optionsRef.current.onOpen?.();
-      };
-
-      ws.onclose = () => {
-        logger.debug("WebSocket disconnected");
-        setIsConnected(false);
-        setIsConnecting(false);
-        isConnectingRef.current = false;
-        optionsRef.current.onClose?.();
-
-        if (
-          shouldReconnectRef.current &&
-          connectionAttemptsRef.current < maxReconnectAttempts &&
-          appStateRef.current !== "background"
-        ) {
-          connectionAttemptsRef.current += 1;
-          setConnectionAttempts(connectionAttemptsRef.current);
-          setConnectionState(ConnectionState.RECONNECTING);
-          reconnectTimeoutRef.current = setTimeout(
-            () => {
-              connectRef.current();
-            },
-            reconnectInterval * Math.pow(1.5, connectionAttemptsRef.current),
-          );
-        }
-      };
-
-      ws.onerror = (error) => {
-        logger.error("WebSocket error:", error);
-        setIsConnecting(false);
-        isConnectingRef.current = false;
-        setConnectionState(ConnectionState.DISCONNECTED);
-        optionsRef.current.onError?.(error);
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const message: WsMessage = JSON.parse(event.data);
-          setLastMessage(message);
-          optionsRef.current.onMessage?.(message);
-        } catch (error) {
-          logger.error("Failed to parse WebSocket message:", error);
-        }
-      };
-    } catch (error) {
-      logger.error("Failed to create WebSocket connection:", error);
-      setIsConnecting(false);
-      isConnectingRef.current = false;
-      setConnectionState(ConnectionState.DISCONNECTED);
-    }
-  }, [url, maxReconnectAttempts, reconnectInterval]);
-
+  // Attach to the shared client lifecycle and register event callbacks.
   useEffect(() => {
-    connectRef.current = connect;
-  });
+    const ownedChannels = ownedChannelsRef.current;
 
-  const disconnect = useCallback(() => {
-    shouldReconnectRef.current = false;
+    const unsubOpen = client.onOpen(() => callbacksRef.current.onOpen?.());
+    const unsubClose = client.onClose(() => callbacksRef.current.onClose?.());
+    const unsubError = client.onError((err) =>
+      callbacksRef.current.onError?.(err),
+    );
+    const unsubMessage = client.onAny((msg) =>
+      callbacksRef.current.onMessage?.(msg),
+    );
+    const detach = client.attach();
 
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
+    // If the shared socket was already open when this hook mounted, notify onOpen.
+    if (client.isConnected()) {
+      callbacksRef.current.onOpen?.();
     }
 
-    if (wsRef.current) {
-      wsRef.current.onclose = null;
-      wsRef.current.onerror = null;
-      wsRef.current.onmessage = null;
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-
-    setIsConnected(false);
-    setIsConnecting(false);
-    isConnectingRef.current = false;
-    setConnectionState(ConnectionState.DISCONNECTED);
-  }, []);
-
-  const send = useCallback((message: WsMessage) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(message));
-    } else {
-      logger.warn("WebSocket is not connected. Cannot send message:", message);
-    }
-  }, []);
+    return () => {
+      unsubOpen();
+      unsubClose();
+      unsubError();
+      unsubMessage();
+      if (ownedChannels.size > 0) {
+        const toRelease = Array.from(ownedChannels);
+        ownedChannels.clear();
+        client.releaseChannels(toRelease);
+      }
+      detach();
+    };
+  }, [client]);
 
   const subscribe = useCallback(
     (channels: string[]) => {
-      channels.forEach((channel) => activeChannelsRef.current.add(channel));
-      send({
-        type: "subscribe",
-        channels,
-      });
+      const newlyOwned: string[] = [];
+      for (const raw of channels) {
+        const ch = raw.trim();
+        if (ch && !ownedChannelsRef.current.has(ch)) {
+          ownedChannelsRef.current.add(ch);
+          newlyOwned.push(ch);
+        }
+      }
+      if (newlyOwned.length > 0) {
+        client.acquireChannels(newlyOwned);
+      }
     },
-    [send],
+    [client],
   );
 
   const unsubscribe = useCallback(
     (channels: string[]) => {
-      channels.forEach((channel) => activeChannelsRef.current.delete(channel));
-      send({
-        type: "unsubscribe",
-        channels,
-      });
+      const toRelease: string[] = [];
+      for (const raw of channels) {
+        const ch = raw.trim();
+        if (ch && ownedChannelsRef.current.has(ch)) {
+          ownedChannelsRef.current.delete(ch);
+          toRelease.push(ch);
+        }
+      }
+      if (toRelease.length > 0) {
+        client.releaseChannels(toRelease);
+      }
     },
-    [send],
+    [client],
+  );
+
+  // Declarative channel subscriptions passed via options.channels.
+  const initialChannelsKey = initialChannels
+    ? Array.from(new Set(initialChannels.filter(Boolean))).sort().join("\0")
+    : "";
+
+  useEffect(() => {
+    if (!initialChannelsKey) return;
+    const channels = initialChannelsKey.split("\0");
+    subscribe(channels);
+    return () => {
+      unsubscribe(channels);
+    };
+  }, [initialChannelsKey, subscribe, unsubscribe]);
+
+  const send = useCallback(
+    (message: WsMessage) => {
+      client.send(message);
+    },
+    [client],
   );
 
   const reconnect = useCallback(() => {
-    disconnect();
-
-    shouldReconnectRef.current = true;
-    connectionAttemptsRef.current = 0;
-    setConnectionAttempts(0);
-
-    setTimeout(() => {
-      connect();
-    }, 100);
-  }, [connect, disconnect]);
-
-  useEffect(() => {
-    shouldReconnectRef.current = true;
-    connect();
-
-    return () => {
-      shouldReconnectRef.current = false;
-      disconnect();
-    };
-  }, [connect, disconnect]);
-
-  // Handle visibility change (background/foreground)
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      const nextState = document.visibilityState === "hidden" ? "background" : "active";
-      const prevState = appStateRef.current;
-
-      if (nextState === prevState) return;
-
-      setAppState(nextState);
-
-      if (nextState === "active" && prevState === "background") {
-        logger.debug("App active. Resuming WebSocket reconnection with exponential backoff.");
-        if (shouldReconnectRef.current && !isConnected && !isConnectingRef.current) {
-          const delay = reconnectInterval * Math.pow(1.5, connectionAttemptsRef.current);
-          if (reconnectTimeoutRef.current) {
-            clearTimeout(reconnectTimeoutRef.current);
-          }
-          reconnectTimeoutRef.current = setTimeout(() => {
-            connect();
-          }, delay);
-          connectionAttemptsRef.current += 1;
-          setConnectionAttempts(connectionAttemptsRef.current);
-        }
-      } else if (nextState === "background") {
-        logger.debug("App in background. Pausing WebSocket reconnection.");
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current);
-          reconnectTimeoutRef.current = null;
-        }
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [connect, isConnected, reconnectInterval]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      shouldReconnectRef.current = false;
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-    };
-  }, []);
+    client.reconnect();
+  }, [client]);
 
   return {
-    isConnected,
-    isConnecting,
-    lastMessage,
-    connectionAttempts,
+    isConnected: snapshot.isConnected,
+    isConnecting: snapshot.isConnecting,
+    connectionState: snapshot.state,
+    lastMessage: snapshot.lastMessage,
+    connectionAttempts: snapshot.connectionAttempts,
     send,
     subscribe,
     unsubscribe,

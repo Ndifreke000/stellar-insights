@@ -96,6 +96,16 @@ pub trait StellarRpcClientTrait: Send + Sync {
         limit: u32,
         sponsored: bool,
     ) -> Result<Vec<crate::rpc::stellar::HorizonAsset>, RpcError>;
+
+    /// Fetch paths for a strict-send payment
+    async fn fetch_paths_strict_send(
+        &self,
+        _source_asset: &crate::rpc::stellar::Asset,
+        _source_amount: &str,
+        _destination_asset: &crate::rpc::stellar::Asset,
+    ) -> Result<Vec<HorizonPath>, RpcError> {
+        Ok(vec![])
+    }
 }
 
 /// Wrapper that implements the trait for the existing StellarRpcClient

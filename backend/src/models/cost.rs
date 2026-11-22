@@ -64,7 +64,7 @@ impl CostConfig {
 }
 
 /// Client tier for budget allocation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ClientTier {
     Anonymous,
     Authenticated,
@@ -140,6 +140,11 @@ impl ClientCostState {
     /// Check if client has sufficient balance for the given cost.
     pub fn has_sufficient_balance(&self, cost: f64) -> bool {
         self.balance >= cost
+    }
+
+    /// Return the configured budget for this client's tier.
+    pub fn budget(&self, config: &CostConfig) -> f64 {
+        self.tier.budget(config)
     }
 }
 

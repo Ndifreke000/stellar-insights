@@ -9,7 +9,7 @@ use crate::rpc::horizon::models::{OrderBook, OrderBookEntry};
 use crate::rpc::stellar::Asset;
 
 /// Represents a path segment that can be either an AMM pool or an order book
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PathSegment {
     /// Constant-product AMM pool (x * y = k)
     Amm(AmmPool),
@@ -36,7 +36,7 @@ impl PathSegment {
 }
 
 /// Constant-product AMM pool (Uniswap v2 style)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct AmmPool {
     pub token0: Asset,
     pub token1: Asset,

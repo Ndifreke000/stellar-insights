@@ -74,20 +74,16 @@ impl RetentionService {
 
         loop {
             // Delete a bounded batch
-            let deleted: i64 = match sqlx::query_scalar(
-                format!(
-                    "DELETE FROM {} WHERE id IN (
-                        SELECT id FROM {} WHERE created_at < {}
-                        LIMIT {}
-                    ) RETURNING id",
-                    table, table, cutoff_datetime, batch_size
-                )
-                .as_str(),
-            )
-            .fetch_all(&pool)
+            let deleted: i64 = match sqlx::query(sqlx::AssertSqlSafe(format!(
+                "DELETE FROM {table} WHERE id IN (
+                    SELECT id FROM {table} WHERE created_at < {cutoff_datetime}
+                    LIMIT {batch_size}
+                )"
+            )))
+            .execute(&pool)
             .await
             {
-                Ok(rows) => rows.len() as i64,
+                Ok(res) => res.rows_affected() as i64,
                 Err(e) => {
                     error!("Failed to delete batch from {}: {}", table, e);
                     result.add_warning(&format!("Batch deletion failed: {}", e));
@@ -147,20 +143,16 @@ impl RetentionService {
 
         loop {
             // Delete a bounded batch
-            let deleted: i64 = match sqlx::query_scalar(
-                format!(
-                    "DELETE FROM {} WHERE id IN (
-                        SELECT id FROM {} WHERE date < {}
-                        LIMIT {}
-                    ) RETURNING id",
-                    table, table, cutoff_datetime, batch_size
-                )
-                .as_str(),
-            )
-            .fetch_all(&pool)
+            let deleted: i64 = match sqlx::query(sqlx::AssertSqlSafe(format!(
+                "DELETE FROM {table} WHERE id IN (
+                    SELECT id FROM {table} WHERE date < {cutoff_datetime}
+                    LIMIT {batch_size}
+                )"
+            )))
+            .execute(&pool)
             .await
             {
-                Ok(rows) => rows.len() as i64,
+                Ok(res) => res.rows_affected() as i64,
                 Err(e) => {
                     error!("Failed to delete batch from {}: {}", table, e);
                     result.add_warning(&format!("Batch deletion failed: {}", e));
@@ -240,10 +232,9 @@ impl RetentionService {
             pages_freed_in_batch = self.vacuum_config.pages_per_batch.min(free_pages);
 
             // Run incremental_vacuum for this batch
-            match sqlx::query(&format!(
-                "PRAGMA incremental_vacuum({})",
-                pages_freed_in_batch
-            ))
+            match sqlx::query(sqlx::AssertSqlSafe(format!(
+                "PRAGMA incremental_vacuum({pages_freed_in_batch})"
+            )))
             .execute(&pool)
             .await
             {
@@ -302,24 +293,31 @@ impl RetentionService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cache::{CacheConfig, CacheManager};
     use crate::database::Database;
+    use crate::ingestion::DataIngestionService;
+    use crate::rpc::StellarRpcClient;
     use crate::state::AppState;
+    use crate::websocket::WsState;
+    use sqlx::SqlitePool;
     use std::sync::Arc;
 
     async fn mock_app_state() -> AppState {
         // Create a mock AppState for testing
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
         let db = Arc::new(Database::new(pool));
-        
+        let rpc = Arc::new(StellarRpcClient::new(
+            "https://soroban-testnet.stellar.org".to_string(),
+            "https://horizon-testnet.stellar.org".to_string(),
+            true,
+        ));
+
         AppState::new(
-            db,
+            Arc::clone(&db),
             Arc::new(CacheManager::new_in_memory_for_tests(CacheConfig::default())),
             Arc::new(WsState::new()),
-            Arc::new(DataIngestionService::new(
-                Arc::new(StellarRpcClient::new("https://horizon.stellar.org")),
-                db.clone(),
-            )),
-            Arc::new(StellarRpcClient::new("https://horizon.stellar.org")),
+            Arc::new(DataIngestionService::new(Arc::clone(&rpc), Arc::clone(&db))),
+            rpc,
         )
     }
 

@@ -116,6 +116,39 @@ pub async fn auth_middleware(
     Ok(next.run(req).await)
 }
 
+/// Best-effort, verified JWT resolution for endpoints that accept both public
+/// and authenticated callers (such as `POST /api/v1/batch`).
+///
+/// Validates the JWT signature, `token_type == "access"`, expiry, and the
+/// token revocation table. Returns `None` if no token is present or if
+/// validation fails — never grants elevated privileges on error.
+pub async fn resolve_optional_auth_user(
+    headers: &axum::http::HeaderMap,
+    jwt_secret: &JwtSecret,
+    revocation_store: &TokenRevocationStore,
+) -> Option<AuthUser> {
+    let token = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok())
+        .and_then(|h| h.strip_prefix("Bearer "))?;
+
+    let claims = validate_access_token(token, jwt_secret.0.as_ref()).ok()?;
+
+    if let Some(ref jti) = claims.jti {
+        match is_token_revoked(revocation_store, jti).await {
+            Ok(true) | Err(_) => return None,
+            Ok(false) => {}
+        }
+    }
+
+    Some(AuthUser {
+        user_id: claims.sub,
+        username: claims.username,
+        session_id: claims.session_id,
+        is_admin: claims.is_admin,
+    })
+}
+
 /// Returns true when the jti is in the revocations table and has not yet expired.
 ///
 /// pub(crate) so AuthService::complete_2fa_login (auth.rs) can also use it

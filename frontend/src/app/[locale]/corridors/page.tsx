@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import dynamic from "next/dynamic";
 import {
@@ -30,67 +30,223 @@ import {
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { BookmarkButton } from "@/components/BookmarkButton";
 import { ObservedDataNotice } from "@/components/corridors/ObservedDataError";
+import {
+  VirtualizedCorridorTable,
+  type CorridorTableSortField,
+  type SortDirection,
+} from "@/components/corridors/VirtualizedCorridorTable";
+import {
+  useRealtimeCorridors,
+  type CorridorUpdate,
+} from "@/hooks/useRealtimeCorridors";
+import { usePatchableRows } from "@/hooks/useStreamingTableData";
 
 // Lazy-load the heatmap — only rendered when the user switches to heatmap view.
 const CorridorHeatmap = dynamic(
-  () => import("@/components/charts/CorridorHeatmap").then((m) => ({ default: m.CorridorHeatmap })),
-  { ssr: false }
+  () =>
+    import("@/components/charts/CorridorHeatmap").then((m) => ({
+      default: m.CorridorHeatmap,
+    })),
+  { ssr: false },
 );
+
+const USD_COMPACT = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  notation: "compact",
+});
 
 function CorridorsPageContent() {
   const t = useTranslations("corridors");
   const { prefs, setPrefs } = useUserPreferences();
 
   const [isExportOpen, setIsExportOpen] = useState(false);
+  const [sortOrder, setSortOrder] = useState<SortDirection>("desc");
+  const [cursor, setCursor] = useState<string | undefined>(undefined);
+  const [previousRows, setPreviousRows] = useState<CorridorMetrics[]>([]);
 
   const viewMode = prefs.corridorsViewMode;
   const setViewMode = (v: typeof viewMode) =>
     setPrefs({ corridorsViewMode: v });
   const sortBy = prefs.corridorsSortBy;
-  const setSortBy = (v: typeof sortBy) => setPrefs({ corridorsSortBy: v });
+  const setSortBy = (v: typeof sortBy) => {
+    setPrefs({ corridorsSortBy: v });
+    setCursor(undefined);
+    setPreviousRows([]);
+  };
   const timePeriod = prefs.corridorsTimePeriod;
-  const setTimePeriod = (v: typeof timePeriod) =>
+  const setTimePeriod = (v: typeof timePeriod) => {
     setPrefs({ corridorsTimePeriod: v });
+    setCursor(undefined);
+    setPreviousRows([]);
+  };
 
-  const [filterState, setFilterState] = useState<AdvancedFilterState>({ query: "", filters: [] });
+  const [filterState, setFilterState] = useState<AdvancedFilterState>({
+    query: "",
+    filters: [],
+  });
 
-  // Derive searchTerm from the filter state for backward compatibility
-  const searchTerm = filterState.query;
-  const setSearchTerm = (q: string) => setFilterState((prev) => ({ ...prev, query: q }));
+  const handleFilterChange = useCallback((next: AdvancedFilterState) => {
+    setFilterState(next);
+    setCursor(undefined);
+    setPreviousRows([]);
+  }, []);
 
-  // The page filters/paginates client-side, so request one large page.
-  const corridorQuery = useCorridors({
-    time_period: timePeriod || undefined,
-    sort_by: sortBy,
-    limit: 200,
-  } satisfies CorridorFilters);
+  // Derive server-side filter parameters from the filter bar so sorting,
+  // filtering, and cursor pagination are server-driven (#2835).
+  const serverFilters = useMemo<CorridorFilters>(() => {
+    const filters: CorridorFilters = {
+      time_period: timePeriod || undefined,
+      sort_by: sortBy,
+      sort_order: sortOrder,
+      limit: 50,
+      cursor,
+    };
+
+    if (filterState.query.trim()) {
+      filters.search = filterState.query.trim();
+    }
+
+    for (const rule of filterState.filters) {
+      const val = String(rule.value ?? "").trim();
+      if (!val) continue;
+      if (rule.field === "source_asset") {
+        filters.source_asset = val;
+      } else if (rule.field === "destination_asset") {
+        filters.destination_asset = val;
+      } else if (rule.field === "status") {
+        filters.status = val;
+      } else if (rule.field === "success_rate") {
+        const parsed = Number.parseFloat(val);
+        if (Number.isFinite(parsed)) {
+          filters.success_rate_min = parsed;
+        }
+      }
+    }
+
+    return filters;
+  }, [timePeriod, sortBy, sortOrder, cursor, filterState]);
+
+  const corridorQuery = useCorridors(serverFilters);
+
+  // Accumulate cursor-paginated pages in order without duplicating rows.
+  const pageData = corridorQuery.data?.data;
+  const nextCursor = corridorQuery.data?.pagination?.next_cursor ?? null;
+  const totalServerCount = corridorQuery.data?.pagination?.total ?? null;
+
+  const loadedCorridors = useMemo<CorridorMetrics[]>(() => {
+    if (previousRows.length === 0) {
+      return pageData ?? [];
+    }
+    if (!pageData || pageData.length === 0) {
+      return previousRows;
+    }
+    const seen = new Set<string>();
+    const all: CorridorMetrics[] = [];
+    for (const row of previousRows) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      all.push(row);
+    }
+    for (const row of pageData) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      all.push(row);
+    }
+    return all;
+  }, [previousRows, pageData]);
+
+  // Normalized row store: live WebSocket updates patch ONLY the affected row
+  // object so untouched memoized rows in VirtualizedCorridorTable never re-render.
+  const {
+    rows: streamingCorridors,
+    patchRow,
+    lastPatchedId,
+  } = usePatchableRows(loadedCorridors);
+
+  const handleRealtimePatch = useCallback(
+    (update: CorridorUpdate) => {
+      if (!update.corridor_key) return;
+      patchRow(update.corridor_key, (current) => {
+        const nextSuccess = update.success_rate ?? current.success_rate;
+        const nextHealth = update.health_score ?? current.health_score;
+        const nextLiquidity =
+          update.liquidity_depth_usd ?? current.liquidity_depth_usd;
+        const nextVolume =
+          update.liquidity_volume_24h_usd ?? current.liquidity_volume_24h_usd;
+        const nextLatency =
+          update.average_latency_ms ?? current.average_latency_ms;
+        const nextAttempts =
+          update.total_transactions ?? current.total_attempts;
+        const nextUpdated = update.last_updated ?? current.last_updated;
+
+        if (
+          nextSuccess === current.success_rate &&
+          nextHealth === current.health_score &&
+          nextLiquidity === current.liquidity_depth_usd &&
+          nextVolume === current.liquidity_volume_24h_usd &&
+          nextLatency === current.average_latency_ms &&
+          nextAttempts === current.total_attempts &&
+          nextUpdated === current.last_updated
+        ) {
+          return current;
+        }
+
+        return {
+          ...current,
+          success_rate: nextSuccess,
+          health_score: nextHealth,
+          liquidity_depth_usd: nextLiquidity,
+          liquidity_volume_24h_usd: nextVolume,
+          average_latency_ms: nextLatency,
+          total_attempts: nextAttempts,
+          last_updated: nextUpdated,
+        };
+      });
+    },
+    [patchRow],
+  );
+
+  // Shares the single tab-wide WebSocket singleton (#2834).
+  const { isConnected: isLiveConnected } = useRealtimeCorridors({
+    onCorridorUpdate: handleRealtimePatch,
+  });
+
   // A failed fetch must not be filled with demo corridors. Cached rows, if
   // any, stay visible with a warning; otherwise the page shows an error.
-  const corridors = corridorQuery.data?.data ?? [];
   const loadFailed = corridorQuery.isError;
-  const showStaleWarning = loadFailed && corridors.length > 0;
-  const showErrorPanel = loadFailed && corridors.length === 0;
+  const showStaleWarning = loadFailed && streamingCorridors.length > 0;
+  const showErrorPanel = loadFailed && streamingCorridors.length === 0;
   const loading = corridorQuery.isPending && !loadFailed;
 
+  // Apply any client-side range filter operators not natively represented as
+  // single query params while preserving server-driven row order.
   const filteredCorridors = useMemo(() => {
-    // Apply advanced filters then sort
-    const filtered = applyFilters(
-      corridors as unknown as Record<string, unknown>[],
-      filterState
+    if (!filterState.query && filterState.filters.length === 0) {
+      return streamingCorridors;
+    }
+    return applyFilters(
+      streamingCorridors as unknown as Record<string, unknown>[],
+      filterState,
     ) as unknown as CorridorMetrics[];
+  }, [streamingCorridors, filterState]);
 
-    return filtered.sort((a, b) => {
-      switch (sortBy) {
-        case "success_rate":
-          return b.success_rate - a.success_rate;
-        case "liquidity":
-          return b.liquidity_depth_usd - a.liquidity_depth_usd;
-        case "health_score":
-        default:
-          return b.health_score - a.health_score;
-      }
-    });
-  }, [corridors, filterState, sortBy]);
+  const handleLoadMore = useCallback(() => {
+    if (nextCursor && !corridorQuery.isFetching) {
+      setPreviousRows(loadedCorridors);
+      setCursor(nextCursor);
+    }
+  }, [nextCursor, corridorQuery.isFetching, loadedCorridors]);
+
+  const handleTableSortChange = useCallback(
+    (field: CorridorTableSortField, order: SortDirection) => {
+      setPrefs({ corridorsSortBy: field });
+      setSortOrder(order);
+      setCursor(undefined);
+      setPreviousRows([]);
+    },
+    [setPrefs],
+  );
 
   const {
     currentPage,
@@ -120,7 +276,7 @@ function CorridorsPageContent() {
             variant="outline"
             className="text-[10px] font-mono border-accent/30 text-accent px-3 py-1 bg-accent/5"
           >
-            {filteredCorridors.length} ACTIVE_ROUTES
+            {totalServerCount ?? filteredCorridors.length} ACTIVE_ROUTES
           </Badge>
           <Link
             href="/corridors/forecasting"
@@ -150,8 +306,18 @@ function CorridorsPageContent() {
         <div className="lg:col-span-8">
           <AdvancedFilterPanel
             fields={[
-              { key: "source_asset", label: "Source Asset", type: "text", placeholder: "e.g. USDC" },
-              { key: "destination_asset", label: "Dest Asset", type: "text", placeholder: "e.g. PHP" },
+              {
+                key: "source_asset",
+                label: "Source Asset",
+                type: "text",
+                placeholder: "e.g. USDC",
+              },
+              {
+                key: "destination_asset",
+                label: "Dest Asset",
+                type: "text",
+                placeholder: "e.g. PHP",
+              },
               {
                 key: "status",
                 label: "Status",
@@ -162,10 +328,22 @@ function CorridorsPageContent() {
                   { value: "degraded", label: "Degraded" },
                 ],
               },
-              { key: "success_rate", label: "Success Rate (%)", type: "number", placeholder: "e.g. 95" },
-              { key: "health_score", label: "Health Score", type: "range", min: 0, max: 100, step: 1 },
+              {
+                key: "success_rate",
+                label: "Success Rate (%)",
+                type: "number",
+                placeholder: "e.g. 95",
+              },
+              {
+                key: "health_score",
+                label: "Health Score",
+                type: "range",
+                min: 0,
+                max: 100,
+                step: 1,
+              },
             ]}
-            onChange={setFilterState}
+            onChange={handleFilterChange}
             storageKey="corridors_advanced_filter"
             placeholder={t("search")}
           />
@@ -222,6 +400,16 @@ function CorridorsPageContent() {
           {t("views.grid")}
         </button>
         <button
+          onClick={() => setViewMode("table")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${
+            viewMode === "table"
+              ? "bg-accent text-white glow-accent"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {t("views.table")}
+        </button>
+        <button
           onClick={() => setViewMode("heatmap")}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${
             viewMode === "heatmap"
@@ -254,6 +442,19 @@ function CorridorsPageContent() {
             {t("empty")}
           </p>
         </div>
+      ) : viewMode === "table" ? (
+        <VirtualizedCorridorTable
+          rows={filteredCorridors}
+          sortBy={sortBy}
+          sortOrder={sortOrder}
+          onSortChange={handleTableSortChange}
+          hasNextPage={Boolean(nextCursor)}
+          isFetchingNextPage={corridorQuery.isFetching && Boolean(cursor)}
+          onLoadMore={handleLoadMore}
+          totalCount={totalServerCount}
+          lastPatchedId={lastPatchedId}
+          isLiveConnected={isLiveConnected}
+        />
       ) : viewMode === "heatmap" ? (
         <div className="glass-card rounded-3xl p-8">
           <div className="mb-8">
@@ -330,29 +531,25 @@ function CorridorsPageContent() {
 
                 <div className="space-y-3">
                   <div className="flex justify-between items-center text-[10px] font-mono uppercase tracking-tighter">
-                    <span className="text-muted-foreground">Settlement Time</span>
+                    <span className="text-muted-foreground">
+                      Settlement Time
+                    </span>
                     <span className="text-accent font-bold">
                       {corridor.average_latency_ms.toFixed(0)}ms
                     </span>
                   </div>
                   <div className="flex justify-between items-center text-[10px] font-mono uppercase tracking-tighter">
-                    <span className="text-muted-foreground">Liquidity Depth</span>
+                    <span className="text-muted-foreground">
+                      Liquidity Depth
+                    </span>
                     <span className="text-foreground font-bold">
-                      {new Intl.NumberFormat("en-US", {
-                        style: "currency",
-                        currency: "USD",
-                        notation: "compact",
-                      }).format(corridor.liquidity_depth_usd)}
+                      {USD_COMPACT.format(corridor.liquidity_depth_usd)}
                     </span>
                   </div>
                   <div className="flex justify-between items-center text-[10px] font-mono uppercase tracking-tighter">
                     <span className="text-muted-foreground">24h Vol</span>
                     <span className="text-foreground font-bold">
-                      {new Intl.NumberFormat("en-US", {
-                        style: "currency",
-                        currency: "USD",
-                        notation: "compact",
-                      }).format(corridor.liquidity_volume_24h_usd)}
+                      {USD_COMPACT.format(corridor.liquidity_volume_24h_usd)}
                     </span>
                   </div>
                 </div>
@@ -373,20 +570,35 @@ function CorridorsPageContent() {
         </div>
       )}
 
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 glass-card rounded-2xl p-6 border border-border/30">
-        <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
-          Telemetry Feed: Viewing {startIndex + 1}-
-          {Math.min(endIndex, filteredCorridors.length)} of{" "}
-          {filteredCorridors.length} Nodes
+      {viewMode === "grid" && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 glass-card rounded-2xl p-6 border border-border/30">
+          <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
+            Telemetry Feed: Viewing {startIndex + 1}-
+            {Math.min(endIndex, filteredCorridors.length)} of{" "}
+            {filteredCorridors.length} Nodes
+            {nextCursor ? " (more pages available)" : ""}
+          </div>
+          <div className="flex items-center gap-3">
+            {nextCursor && (
+              <button
+                type="button"
+                onClick={handleLoadMore}
+                disabled={corridorQuery.isFetching}
+                className="px-3 py-1.5 rounded-lg border border-accent/30 text-[10px] font-mono uppercase text-accent hover:bg-accent hover:text-white disabled:opacity-50 transition-colors"
+              >
+                {corridorQuery.isFetching ? "Loading…" : "Load more"}
+              </button>
+            )}
+            <DataTablePagination
+              currentPage={currentPage}
+              pageSize={pageSize}
+              totalItems={filteredCorridors.length}
+              onPageChange={onPageChange}
+              onPageSizeChange={onPageSizeChange}
+            />
+          </div>
         </div>
-        <DataTablePagination
-          currentPage={currentPage}
-          pageSize={pageSize}
-          totalItems={filteredCorridors.length}
-          onPageChange={onPageChange}
-          onPageSizeChange={onPageSizeChange}
-        />
-      </div>
+      )}
     </div>
   );
 }

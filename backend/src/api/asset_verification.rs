@@ -66,7 +66,10 @@ async fn verify_asset(
         )
     })?;
 
-    let result = verifier.verify_asset(&code, &issuer).await.map_err(|e| {
+    let result = verifier
+        .verify_asset_with_impersonation(&code, &issuer)
+        .await
+        .map_err(|e| {
         tracing::error!("Asset verification failed: {}", e);
         ApiError::internal("VERIFICATION_FAILED", "Failed to verify asset")
     })?;

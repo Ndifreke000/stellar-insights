@@ -19,8 +19,13 @@ pub mod response_compression;
 pub mod sep10_for_mobile;
 pub mod websocket_real_time_updates;
 
-pub use api_versioning::ApiVersioning;
-pub use batch_endpoints::BatchEndpoints;
+pub use api_versioning::{
+    api_versioning_middleware, ApiVersionPolicy, ApiVersionSummary, ApiVersioning,
+    ResolvedRouteVersion, VersioningRejection,
+};
+pub use batch_endpoints::{
+    batch_http_handler, BatchCallerIdentity, BatchDispatcher, BatchEndpoints, BatchHandlerState,
+};
 pub use concurrency_limit::{
     concurrency_limit_middleware, panic_recovery_middleware, ConcurrencyLimitState,
 };
@@ -28,7 +33,7 @@ pub use cost_rate_limiter::CostRateLimiter;
 pub use database_schema_separation::DatabaseSchemaSeparation;
 pub use etag_caching_support::ETagCachingSupport;
 pub use expensive_rate_limiter::{categorize_endpoint, extract_identifier, ExpensiveRateLimiter, RateLimitConfig, rate_limit_headers};
-pub use field_selection_parameter::FieldSelectionParameter;
+pub use field_selection_parameter::{field_selection_middleware, FieldSelectionParameter};
 pub use jwt_token_refresh::JWTTokenRefresh;
 pub use mobile_pagination_endpoints::MobilePaginationEndpoints;
 pub use mobile_request_logging::MobileRequestLogging;

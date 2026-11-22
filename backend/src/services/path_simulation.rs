@@ -57,14 +57,14 @@ impl PathSimulationResult {
 }
 
 /// Order book cache entry
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct OrderBookCacheEntry {
     pub order_book: crate::rpc::horizon::models::OrderBook,
     pub timestamp: i64,
 }
 
 /// AMM pool cache entry
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AmmPoolCacheEntry {
     pub pool: AmmPool,
     pub timestamp: i64,
@@ -92,7 +92,7 @@ impl PathSimulationService {
         let cache_key = format!("{}{}:{}:{}", ORDER_BOOK_CACHE_PREFIX, selling, buying, limit);
 
         // Try cache first
-        if let Some(entry) = self.cache.get::<OrderBookCacheEntry>(&cache_key).await {
+        if let Ok(Some(entry)) = self.cache.get::<OrderBookCacheEntry>(&cache_key).await {
             // Check if TTL expired
             let now = chrono::Utc::now().timestamp();
             if now - entry.timestamp < ORDER_BOOK_TTL_SECONDS as i64 {
@@ -111,8 +111,9 @@ impl PathSimulationService {
             order_book: order_book.clone(),
             timestamp: chrono::Utc::now().timestamp(),
         };
-        self.cache
-            .set(&cache_key, &entry, Duration::from_secs(ORDER_BOOK_TTL_SECONDS))
+        let _ = self
+            .cache
+            .set(&cache_key, &entry, ORDER_BOOK_TTL_SECONDS as usize)
             .await;
 
         Ok(order_book)
@@ -123,7 +124,7 @@ impl PathSimulationService {
         let cache_key = format!("{}{}", AMM_POOL_CACHE_PREFIX, pool_id);
 
         // Try cache first
-        if let Some(entry) = self.cache.get::<AmmPoolCacheEntry>(&cache_key).await {
+        if let Ok(Some(entry)) = self.cache.get::<AmmPoolCacheEntry>(&cache_key).await {
             // Check if TTL expired
             let now = chrono::Utc::now().timestamp();
             if now - entry.timestamp < AMM_POOL_TTL_SECONDS as i64 {
@@ -155,7 +156,9 @@ impl PathSimulationService {
                 continue;
             }
 
-            let prev = segments.last().unwrap();
+            let Some(prev): Option<&PathSegment> = segments.last() else {
+                continue;
+            };
             let (selling, buying) = if prev.selling_asset() == &asset {
                 (prev.selling_asset(), prev.buying_asset())
             } else {
@@ -176,20 +179,27 @@ impl PathSimulationService {
         source_amount: f64,
     ) -> Result<PathSimulationResult, anyhow::Error> {
         // Parse Horizon path
-        let source_amount_f64: f64 = horizon_path.source_amount.parse().unwrap_or(0.0);
+        let _source_amount_f64: f64 = horizon_path.source_amount.parse().unwrap_or(0.0);
         let destination_amount_f64: f64 = horizon_path.destination_amount.parse().unwrap_or(0.0);
+
+        let source_asset = Asset {
+            asset_type: horizon_path.source_asset_type.clone(),
+            asset_code: horizon_path.source_asset_code.clone(),
+            asset_issuer: horizon_path.source_asset_issuer.clone(),
+        };
+        let destination_asset = Asset {
+            asset_type: horizon_path.destination_asset_type.clone(),
+            asset_code: horizon_path.destination_asset_code.clone(),
+            asset_issuer: horizon_path.destination_asset_issuer.clone(),
+        };
 
         // Build segments for simulation
         let segments = self.fetch_path_segments(&horizon_path.path).await?;
 
         // Simulate the path
-        let path = amm_build_path(
-            &horizon_path.try_into()?, // This would need implementation
-            &horizon_path.try_into()?, // Destination asset
-            &segments,
-        );
+        let path = amm_build_path(&source_asset, &destination_asset, &segments);
 
-        let simulated_amount = if let Some(p) = path {
+        let simulated_amount = if let Some(_p) = path {
             // We'd need to calculate based on the path
             source_amount * 0.99 // Placeholder - actual calculation would use segments
         } else {
@@ -205,8 +215,8 @@ impl PathSimulationService {
         };
 
         Ok(PathSimulationResult {
-            source_asset: horizon_path.try_into()?, // Source asset
-            destination_asset: horizon_path.try_into()?, // Destination asset
+            source_asset,
+            destination_asset,
             source_amount,
             horizon_destination_amount: destination_amount_f64,
             simulated_destination_amount: simulated_amount,

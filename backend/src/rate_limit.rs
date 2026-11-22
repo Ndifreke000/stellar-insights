@@ -204,7 +204,7 @@ impl RateLimiter {
     }
 
     /// Resolve client identifier from extracted request context.
-    async fn resolve_client_identifier(
+    pub async fn resolve_client_identifier(
         &self,
         bearer_token: Option<String>,
         auth_user_id: Option<String>,
@@ -373,13 +373,29 @@ impl RateLimiter {
             .any(|whitelisted_ip| whitelisted_ip == ip || whitelisted_ip == "*")
     }
 
-    /// Check rate limit for a client/endpoint combination
+    /// Check rate limit for a client/endpoint combination (1 unit).
     pub async fn check_rate_limit_for_client(
         &self,
         client: &ClientIdentifier,
         endpoint: &str,
         ip: &str,
     ) -> (bool, RateLimitInfo) {
+        self.check_rate_limit_units_for_client(client, endpoint, ip, 1)
+            .await
+    }
+
+    /// Check and debit `units` against the rate limit for a client/endpoint combination.
+    ///
+    /// Used by batch endpoints so a batch of `N` sub-requests counts as `N`
+    /// against the caller's rate limit instead of `1` (#2832).
+    pub async fn check_rate_limit_units_for_client(
+        &self,
+        client: &ClientIdentifier,
+        endpoint: &str,
+        ip: &str,
+        units: u32,
+    ) -> (bool, RateLimitInfo) {
+        let units = units.max(1);
         // Get endpoint config
         let configs = self.endpoint_configs.read().await;
         let config = configs.get(endpoint).cloned().unwrap_or_default();
@@ -413,8 +429,9 @@ impl RateLimiter {
         // Try Redis first
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
-            if let Ok((allowed, remaining, reset)) =
-                self.check_redis_limit(&mut conn, &key, limit).await
+            if let Ok((allowed, remaining, reset)) = self
+                .check_redis_limit_units(&mut conn, &key, limit, units)
+                .await
             {
                 return (
                     allowed,
@@ -436,7 +453,7 @@ impl RateLimiter {
         }
 
         // Fall back to memory store
-        let (allowed, remaining, reset) = self.check_memory_limit(&key, limit).await;
+        let (allowed, remaining, reset) = self.check_memory_limit_units(&key, limit, units).await;
         (
             allowed,
             RateLimitInfo {
@@ -501,19 +518,32 @@ impl RateLimiter {
         }
     }
 
-    /// Independent per-API-key rate limit bucket (not tied to client IP).
+    /// Independent per-API-key rate limit bucket (not tied to client IP), charging 1 unit.
     pub async fn rate_limit_api_key(
         &self,
         api_key_id: &str,
         limit_per_minute: u32,
     ) -> (bool, RateLimitInfo) {
+        self.rate_limit_api_key_units(api_key_id, limit_per_minute, 1)
+            .await
+    }
+
+    /// Independent per-API-key rate limit bucket charging `units` requests.
+    pub async fn rate_limit_api_key_units(
+        &self,
+        api_key_id: &str,
+        limit_per_minute: u32,
+        units: u32,
+    ) -> (bool, RateLimitInfo) {
         let limit = limit_per_minute.max(1);
+        let units = units.max(1);
         let key = format!("apikey_ratelimit:{api_key_id}");
 
         if let Some(conn) = self.redis_connection.read().await.as_ref() {
             let mut conn = conn.clone();
-            if let Ok((allowed, remaining, reset)) =
-                self.check_redis_limit(&mut conn, &key, limit).await
+            if let Ok((allowed, remaining, reset)) = self
+                .check_redis_limit_units(&mut conn, &key, limit, units)
+                .await
             {
                 return (
                     allowed,
@@ -534,7 +564,7 @@ impl RateLimiter {
             }
         }
 
-        let (allowed, remaining, reset) = self.check_memory_limit(&key, limit).await;
+        let (allowed, remaining, reset) = self.check_memory_limit_units(&key, limit, units).await;
         (
             allowed,
             RateLimitInfo {
@@ -593,35 +623,42 @@ impl RateLimiter {
         Some(api_key.id)
     }
 
-    /// Check rate limit in Redis
-    async fn check_redis_limit(
+    /// Check and debit `units` against rate limit in Redis
+    async fn check_redis_limit_units(
         &self,
         conn: &mut MultiplexedConnection,
         key: &str,
         limit: u32,
+        units: u32,
     ) -> anyhow::Result<(bool, u32, u32), Box<dyn std::error::Error + Send + Sync>> {
         use redis::AsyncCommands;
 
         let current: u32 = conn.get(key).await.unwrap_or(0);
         let ttl: i64 = conn.ttl(key).await.unwrap_or(-1);
+        let reset = if ttl > 0 { ttl as u32 } else { 60 };
 
-        if current >= limit {
-            return Ok((false, 0, if ttl > 0 { ttl as u32 } else { 60 }));
+        if current.saturating_add(units) > limit {
+            return Ok((false, limit.saturating_sub(current), reset));
         }
 
-        let new_count = current + 1;
-        conn.incr::<_, _, ()>(key, 1).await?;
+        let new_count = current.saturating_add(units);
+        conn.incr::<_, _, ()>(key, units).await?;
 
         if current == 0 {
             conn.expire::<_, ()>(key, 60).await?;
         }
 
         let remaining = limit.saturating_sub(new_count);
-        Ok((new_count <= limit, remaining, 60))
+        Ok((new_count <= limit, remaining, reset))
     }
 
-    /// Check rate limit in memory (fallback)
-    async fn check_memory_limit(&self, key: &str, limit: u32) -> (bool, u32, u32) {
+    /// Check and debit `units` against rate limit in memory (fallback)
+    async fn check_memory_limit_units(
+        &self,
+        key: &str,
+        limit: u32,
+        units: u32,
+    ) -> (bool, u32, u32) {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -633,15 +670,19 @@ impl RateLimiter {
 
         if now > expiry {
             // Reset counter
-            store.insert(key.to_string(), (1, now + 60));
-            (true, limit - 1, 60)
-        } else if count >= limit {
-            (false, 0, (expiry - now) as u32)
+            if units > limit {
+                store.insert(key.to_string(), (0, now + 60));
+                return (false, limit, 60);
+            }
+            store.insert(key.to_string(), (units, now + 60));
+            (true, limit.saturating_sub(units), 60)
+        } else if count.saturating_add(units) > limit {
+            (false, limit.saturating_sub(count), (expiry - now).max(1) as u32)
         } else {
-            let new_count = count + 1;
+            let new_count = count.saturating_add(units);
             store.insert(key.to_string(), (new_count, expiry));
             let remaining = limit.saturating_sub(new_count);
-            (new_count <= limit, remaining, (expiry - now) as u32)
+            (new_count <= limit, remaining, (expiry - now).max(1) as u32)
         }
     }
 }
@@ -807,10 +848,17 @@ pub async fn api_key_rate_limit_middleware(
     }
 }
 
+/// Marker extension inserted by `rate_limit_middleware` so batch handlers know
+/// the outer HTTP request already debited 1 unit from the outer rate-limit bucket.
+#[derive(Debug, Clone)]
+pub struct OuterRateLimitCharged {
+    pub endpoint: String,
+}
+
 /// Middleware for rate limiting
 pub async fn rate_limit_middleware(
     State(limiter): State<Arc<RateLimiter>>,
-    req: Request,
+    mut req: Request,
     next: Next,
 ) -> Response {
     let bearer_token = req
@@ -846,6 +894,9 @@ pub async fn rate_limit_middleware(
     if !allowed {
         return RateLimitError { info }.into_response();
     }
+
+    req.extensions_mut()
+        .insert(OuterRateLimitCharged { endpoint: path });
 
     let response = next.run(req).await;
 

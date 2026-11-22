@@ -121,13 +121,13 @@ impl BackupManager {
             "BACKUP TO '{}'",
             temp_path.display().to_string().replace("'", "''")
         );
-        dest_pool
-            .execute(&backup_sql)
+        sqlx::query(sqlx::AssertSqlSafe(backup_sql))
+            .execute(&dest_pool)
             .await
             .context("Failed to create backup using SQLite BACKUP API")?;
 
         // Close connection
-        dest_pool.close().await?;
+        dest_pool.close().await;
 
         // Step 2: Compute checksum
         let bytes = tokio::fs::read(&temp_path)
@@ -356,7 +356,7 @@ impl BackupManager {
             .await
             .context("integrity_check query failed")?;
 
-        pool.close().await?;
+        pool.close().await;
 
         let ok = row.0.trim().eq_ignore_ascii_case("ok");
 
@@ -603,7 +603,7 @@ impl BackupManager {
             .await
             .context("integrity_check query failed")?;
 
-        pool.close().await?;
+        pool.close().await;
 
         let integrity_ok = row.0.trim().eq_ignore_ascii_case("ok");
 
@@ -904,7 +904,7 @@ mod tests {
     #[tokio::test]
     async fn find_latest_backup() {
         let dir = tempfile::tempdir().unwrap();
-        tokio::fs::create_dir_all(dir.path().join("backups")).unwrap();
+        tokio::fs::create_dir_all(dir.path().join("backups")).await.unwrap();
 
         // Create some fake backups
         tokio::fs::write(dir.path().join("backups").join("payraider_20240101_010000.db"), b"db1")

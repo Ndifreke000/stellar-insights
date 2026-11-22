@@ -295,10 +295,10 @@ impl GcpKmsSigner {
                 let response = self
                     .client
                     .post(&self.token_url)
-                    .form(&[
-                        ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
-                        ("assertion", jwt.as_str()),
-                    ])
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .body(format!(
+                        "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion={jwt}"
+                    ))
                     .send()
                     .await
                     .context("Failed to request OAuth2 access token")?;
@@ -626,7 +626,8 @@ mod tests {
     fn test_seed() -> String {
         // Deterministic test-only seed; not a real account.
         let signing = SigningKey::from_bytes(&[7u8; 32]);
-        stellar_strkey::ed25519::PrivateKey(signing.to_bytes()).to_string()
+        let pk = stellar_strkey::ed25519::PrivateKey(signing.to_bytes());
+        stellar_strkey::Unredacted(&pk).to_string().as_str().to_owned()
     }
 
     #[tokio::test]
