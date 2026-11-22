@@ -6,6 +6,7 @@ use axum::{
     http::{
         header::{
             CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED,
+            VARY,
         },
         HeaderMap, HeaderValue, StatusCode,
     },
@@ -39,6 +40,18 @@ fn parse_http_date(value: &str) -> Option<DateTime<Utc>> {
                 .map(|dt| dt.with_timezone(&Utc))
         })
         .ok()
+}
+
+/// Single source of truth for ETag generation.
+///
+/// The digest is computed over the *uncompressed* representation and emitted as
+/// a weak validator (`W/"..."`). Because compression may run after this point
+/// and produce different bytes per encoding, a strong ETag would be incorrect;
+/// a weak ETag is stable across gzip/br/identity and lets conditional requests
+/// resolve to the same 304 regardless of `Accept-Encoding`.
+pub fn compute_weak_etag(body: &[u8]) -> String {
+    let digest = Sha256::digest(body);
+    format!("W/\"{}\"", hex::encode(digest))
 }
 
 fn normalize_etag(value: &str) -> String {
@@ -118,6 +131,9 @@ fn set_common_headers(
     if let Ok(value) = HeaderValue::from_str(&format_http_date(last_modified)) {
         headers.insert(LAST_MODIFIED, value);
     }
+    // The representation may be compressed downstream, so caches must key on
+    // the negotiated encoding alongside the (weak) ETag.
+    headers.insert(VARY, HeaderValue::from_static("Accept-Encoding"));
 }
 
 pub fn cached_json_response<T: Serialize>(
@@ -127,8 +143,7 @@ pub fn cached_json_response<T: Serialize>(
     ttl_seconds: usize,
 ) -> anyhow::Result<Response> {
     let body = serde_json::to_vec(payload)?;
-    let digest = Sha256::digest(&body);
-    let etag = format!("\"{}\"", hex::encode(digest));
+    let etag = compute_weak_etag(&body);
     let last_modified = resolve_last_modified(resource_key, &etag);
     let cache_control = format!("public, max-age={ttl_seconds}");
 
@@ -170,11 +185,28 @@ mod tests {
         assert!(response.headers().get(CACHE_CONTROL).is_some());
         assert!(response.headers().get(ETAG).is_some());
         assert!(response.headers().get(LAST_MODIFIED).is_some());
+        assert_eq!(
+            response
+                .headers()
+                .get(VARY)
+                .and_then(|v| v.to_str().ok()),
+            Some("Accept-Encoding")
+        );
 
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("response body should be readable");
         assert_eq!(body, r#"{"value":"a"}"#);
+    }
+
+    #[tokio::test]
+    async fn etag_is_weak_and_stable_across_encodings() {
+        let body = br#"{"value":"x"}"#;
+        let etag = compute_weak_etag(body);
+        assert!(etag.starts_with("W/\""), "ETag must be weak: {etag}");
+        // Same uncompressed representation yields the same validator regardless
+        // of the negotiated encoding applied downstream.
+        assert_eq!(etag, compute_weak_etag(body));
     }
 
     #[tokio::test]
@@ -200,6 +232,45 @@ mod tests {
             &conditional_headers,
             "resource:b",
             &Payload { value: "b" },
+            60,
+        )
+        .expect("cached_json_response should succeed for the conditional request");
+        assert_eq!(second.status(), StatusCode::NOT_MODIFIED);
+        assert_eq!(
+            second
+                .headers()
+                .get(VARY)
+                .and_then(|v| v.to_str().ok()),
+            Some("Accept-Encoding")
+        );
+    }
+
+    #[tokio::test]
+    async fn returns_304_for_strong_etag_from_client() {
+        // Clients may echo the validator back without the weak prefix; the
+        // comparison must still match so 304s are consistent across encodings.
+        let headers = HeaderMap::new();
+        let first = cached_json_response(&headers, "resource:d", &Payload { value: "d" }, 60)
+            .expect("cached_json_response should succeed for the initial request");
+        let etag = first
+            .headers()
+            .get(ETAG)
+            .expect("response should carry an ETag header")
+            .to_str()
+            .expect("ETag header should be valid ASCII")
+            .to_string();
+        let strong = etag.trim_start_matches("W/").to_string();
+
+        let mut conditional_headers = HeaderMap::new();
+        conditional_headers.insert(
+            IF_NONE_MATCH,
+            HeaderValue::from_str(&strong).expect("etag should be a valid header value"),
+        );
+
+        let second = cached_json_response(
+            &conditional_headers,
+            "resource:d",
+            &Payload { value: "d" },
             60,
         )
         .expect("cached_json_response should succeed for the conditional request");

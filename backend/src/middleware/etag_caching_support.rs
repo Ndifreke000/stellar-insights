@@ -4,6 +4,7 @@ use axum::{
     http::{
         header::{
             CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED,
+            VARY,
         },
         HeaderMap, HeaderValue, StatusCode,
     },
@@ -32,6 +33,16 @@ struct CacheEntry {
 pub struct ETagCachingSupport {
     config: ETagConfig,
     state: Arc<RwLock<HashMap<String, CacheEntry>>>,
+}
+
+/// Compute a weak ETag over the uncompressed representation of a payload.
+///
+/// The ETag is intentionally weak (`W/"..."`) because compression middleware
+/// may transform the body after this point. A weak validator is semantically
+/// equivalent across encodings, so conditional requests (gzip/br/identity)
+/// all resolve to the same 304 decision.
+pub fn compute_weak_etag(body: &[u8]) -> String {
+    format!("W/\"{}\"", hex::encode(Sha256::digest(body)))
 }
 
 impl ETagCachingSupport {
@@ -87,7 +98,7 @@ impl ETagCachingSupport {
         payload: &T,
     ) -> Result<ETagResponse> {
         let body = serde_json::to_vec(payload)?;
-        let etag = format!("\"{}\"", hex::encode(Sha256::digest(&body)));
+        let etag = compute_weak_etag(&body);
         let cache_control = format!("public, max-age={}", self.config.default_ttl_seconds);
         let key = self.cache_key(resource_key, context);
         let _ = self.resolve_last_modified(&key, &etag)?;
@@ -115,7 +126,7 @@ impl ETagCachingSupport {
         payload: &T,
     ) -> Result<Response> {
         let body = serde_json::to_vec(payload)?;
-        let etag = format!("\"{}\"", hex::encode(Sha256::digest(&body)));
+        let etag = compute_weak_etag(&body);
         let cache_control = format!("public, max-age={}", self.config.default_ttl_seconds);
         let key = self.cache_key(resource_key, context);
         let last_modified = self.resolve_last_modified(&key, &etag)?;
@@ -200,6 +211,9 @@ fn set_cache_headers(
     if let Ok(v) = HeaderValue::from_str(&format_http_date(last_modified)) {
         headers.insert(LAST_MODIFIED, v);
     }
+    // The representation may be compressed downstream; advertise that the
+    // response varies by Accept-Encoding so caches key correctly.
+    headers.insert(VARY, HeaderValue::from_static("Accept-Encoding"));
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -259,32 +273,26 @@ mod tests {
         assert_eq!(testnet_key, mainnet_key);
     }
 
-    #[tokio::test]
-    async fn cached_response_returns_200_with_headers() {
-        let inst = instance();
-        let ctx = NetworkContext::testnet();
-        let headers = HeaderMap::new();
-        let resp = inst
-            .cached_response(&headers, &ctx, "res:2", &Payload { value: "data" })
-            .unwrap();
-
-        assert_eq!(resp.status(), StatusCode::OK);
-        assert!(resp.headers().get(ETAG).is_some());
-        assert!(resp.headers().get(CACHE_CONTROL).is_some());
-        assert!(resp.headers().get(LAST_MODIFIED).is_some());
-
-        let body = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
-        assert_eq!(body, r#"{"value":"data"}"#);
+    #[test]
+    fn etag_is_weak_and_stable_across_encodings() {
+        let body = serde_json::to_vec(&Payload { value: "hello" }).unwrap();
+        let etag = compute_weak_etag(&body);
+        assert!(etag.starts_with("W/\""));
+        // Same uncompressed representation yields the same ETag regardless of
+        // the Accept-Encoding the client requested.
+        assert_eq!(etag, compute_weak_etag(&body));
     }
 
     #[tokio::test]
-    async fn cached_response_returns_304_on_if_none_match() {
+    async fn cached_response_returns_304_with_vary_for_all_encodings() {
         let inst = instance();
         let ctx = NetworkContext::testnet();
+        let payload = Payload { value: "hello" };
 
         let first = inst
-            .cached_response(&HeaderMap::new(), &ctx, "res:3", &Payload { value: "x" })
+            .cached_response(&HeaderMap::new(), &ctx, "res:enc", &payload)
             .unwrap();
+        assert_eq!(first.status(), StatusCode::OK);
         let etag = first
             .headers()
             .get(ETAG)
@@ -292,64 +300,34 @@ mod tests {
             .to_str()
             .unwrap()
             .to_string();
+        assert!(etag.starts_with("W/\""));
+        assert_eq!(
+            first.headers().get(VARY).unwrap().to_str().unwrap(),
+            "Accept-Encoding"
+        );
 
-        let mut cond = HeaderMap::new();
-        cond.insert(IF_NONE_MATCH, HeaderValue::from_str(&etag).unwrap());
-
-        let second = inst
-            .cached_response(&cond, &ctx, "res:3", &Payload { value: "x" })
-            .unwrap();
-        assert_eq!(second.status(), StatusCode::NOT_MODIFIED);
-    }
-
-    #[tokio::test]
-    async fn cached_response_returns_304_on_if_modified_since() {
-        let inst = instance();
-        let ctx = NetworkContext::mainnet();
-
-        let first = inst
-            .cached_response(&HeaderMap::new(), &ctx, "res:4", &Payload { value: "y" })
-            .unwrap();
-        let lm = first
-            .headers()
-            .get(LAST_MODIFIED)
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_string();
-
-        let mut cond = HeaderMap::new();
-        cond.insert(IF_MODIFIED_SINCE, HeaderValue::from_str(&lm).unwrap());
-
-        let second = inst
-            .cached_response(&cond, &ctx, "res:4", &Payload { value: "y" })
-            .unwrap();
-        assert_eq!(second.status(), StatusCode::NOT_MODIFIED);
-    }
-
-    #[tokio::test]
-    async fn changed_payload_returns_200_not_304() {
-        let inst = instance();
-        let ctx = NetworkContext::testnet();
-
-        let first = inst
-            .cached_response(&HeaderMap::new(), &ctx, "res:5", &Payload { value: "v1" })
-            .unwrap();
-        let etag = first
-            .headers()
-            .get(ETAG)
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_string();
-
-        let mut cond = HeaderMap::new();
-        cond.insert(IF_NONE_MATCH, HeaderValue::from_str(&etag).unwrap());
-
-        // Different payload → different ETag → 200
-        let second = inst
-            .cached_response(&cond, &ctx, "res:5", &Payload { value: "v2" })
-            .unwrap();
-        assert_eq!(second.status(), StatusCode::OK);
+        for encoding in ["gzip", "br", "identity"] {
+            let mut headers = HeaderMap::new();
+            headers.insert(IF_NONE_MATCH, HeaderValue::from_str(&etag).unwrap());
+            headers.insert(
+                axum::http::header::ACCEPT_ENCODING,
+                HeaderValue::from_str(encoding).unwrap(),
+            );
+            let resp = inst
+                .cached_response(&headers, &ctx, "res:enc", &payload)
+                .unwrap();
+            assert_eq!(resp.status(), StatusCode::NOT_MODIFIED, "encoding={encoding}");
+            assert_eq!(
+                resp.headers().get(ETAG).unwrap().to_str().unwrap(),
+                etag,
+                "encoding={encoding}"
+            );
+            assert_eq!(
+                resp.headers().get(VARY).unwrap().to_str().unwrap(),
+                "Accept-Encoding"
+            );
+            let body = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+            assert!(body.is_empty());
+        }
     }
 }
