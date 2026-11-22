@@ -50,6 +50,10 @@ governance = []
 # Off by default because aws-sdk-kms/aws-config add a large dependency
 # tree; the gcp-kms and local signer backends need no extra crates.
 aws-kms = ["dep:aws-sdk-kms", "dep:aws-config"]
+# Hubble/BigQuery historical backfill importer (#2866). Off by default so the
+# default build does not pull in the BigQuery client stack; enable with
+# `cargo build --features hubble-backfill`.
+hubble-backfill = []
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
