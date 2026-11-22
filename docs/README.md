@@ -72,6 +72,7 @@ This index covers documentation that is still relevant to understanding or runni
 | [security/ARCHITECTURE.md](security/ARCHITECTURE.md) | Security architecture |
 | [security/THREAT_MODEL.md](security/THREAT_MODEL.md) | Threat model |
 | [security/KNOWN_GAPS.md](security/KNOWN_GAPS.md) | Known security gaps |
+| [security/MOBILE_SEP10_KEY_STORAGE.md](security/MOBILE_SEP10_KEY_STORAGE.md) | Proposed: mobile SEP-10 key custody, biometric-gated signing, threat model (#2845) |
 | [security/SECURITY_TESTING_SCOPE.md](security/SECURITY_TESTING_SCOPE.md) | Security testing scope |
 | [SECRETS_MANAGEMENT.md](SECRETS_MANAGEMENT.md) | Secrets management |
 | [AUDIT_LOG.md](AUDIT_LOG.md) | Audit logging |
