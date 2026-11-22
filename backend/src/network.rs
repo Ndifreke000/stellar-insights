@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::time::{Duration, SystemTime};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -148,6 +149,175 @@ impl NetworkConfig {
             .map(|v| v as u32)
             .ok_or_else(|| anyhow::anyhow!("Missing protocol_version in Horizon ledger response"))
     }
+
+    /// Fetch the latest closed ledger's sequence, close time and protocol version.
+    pub async fn latest_ledger(&self) -> Result<LedgerSnapshot> {
+        let url = format!("{}/ledgers?order=desc&limit=1", self.horizon_url);
+        let resp: serde_json::Value = reqwest::Client::new()
+            .get(&url)
+            .send()
+            .await
+            .context("Failed to fetch latest ledger from Horizon")?
+            .json()
+            .await
+            .context("Failed to parse Horizon ledger response")?;
+
+        let record = &resp["_embedded"]["records"][0];
+        let sequence = record["sequence"]
+            .as_u64()
+            .ok_or_else(|| anyhow::anyhow!("Missing sequence in Horizon ledger response"))?;
+        let protocol_version = record["protocol_version"]
+            .as_u64()
+            .map(|v| v as u32)
+            .ok_or_else(|| anyhow::anyhow!("Missing protocol_version in Horizon ledger response"))?;
+        let closed_at = record["closed_at"]
+            .as_str()
+            .and_then(parse_rfc3339)
+            .ok_or_else(|| anyhow::anyhow!("Missing closed_at in Horizon ledger response"))?;
+
+        Ok(LedgerSnapshot {
+            sequence,
+            protocol_version,
+            closed_at,
+        })
+    }
+}
+
+/// A point-in-time view of the most recently closed ledger.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LedgerSnapshot {
+    pub sequence: u64,
+    pub protocol_version: u32,
+    pub closed_at: SystemTime,
+}
+
+/// Parse an RFC 3339 timestamp (e.g. `2024-01-01T00:00:00Z`) into a `SystemTime`.
+fn parse_rfc3339(s: &str) -> Option<SystemTime> {
+    let dt = chrono::DateTime::parse_from_rfc3339(s).ok()?;
+    Some(SystemTime::from(dt))
+}
+
+/// Default number of seconds without a new ledger before the network is
+/// considered halted. Stellar closes a ledger roughly every 5 seconds.
+pub const DEFAULT_HALT_THRESHOLD_SECS: u64 = 60;
+
+/// Health state of the Stellar network derived from ledger close times and
+/// protocol version transitions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[derive(utoipa::ToSchema)]
+pub enum NetworkHealth {
+    /// Ledgers are closing normally.
+    Healthy,
+    /// No ledger has closed within the halt threshold.
+    Halted,
+    /// The protocol version changed on the latest ledger.
+    ProtocolUpgrade,
+}
+
+/// Banner payload surfaced to the frontend describing the current network
+/// state. `severity` is one of `info`, `warning`, or `critical`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(utoipa::ToSchema)]
+pub struct NetworkBanner {
+    pub health: NetworkHealth,
+    pub severity: String,
+    pub title: String,
+    pub message: String,
+    /// Seconds since the last ledger closed, if known.
+    pub seconds_since_close: Option<u64>,
+    /// Current protocol version, if known.
+    pub protocol_version: Option<u32>,
+    /// Whether corridor alerts should be suppressed (true during a halt).
+    pub suppress_alerts: bool,
+}
+
+/// Tracks network health across successive ledger observations.
+#[derive(Debug, Clone)]
+pub struct NetworkStatusTracker {
+    halt_threshold: Duration,
+    last_protocol_version: Option<u32>,
+}
+
+impl NetworkStatusTracker {
+    /// Create a tracker with the given halt threshold (seconds without a ledger).
+    #[must_use]
+    pub fn new(halt_threshold_secs: u64) -> Self {
+        Self {
+            halt_threshold: Duration::from_secs(halt_threshold_secs),
+            last_protocol_version: None,
+        }
+    }
+
+    /// Create a tracker using the default halt threshold.
+    #[must_use]
+    pub fn with_default_threshold() -> Self {
+        Self::new(DEFAULT_HALT_THRESHOLD_SECS)
+    }
+
+    /// Evaluate the current network health from the latest ledger snapshot.
+    ///
+    /// A halt is detected when the ledger's close time is older than the halt
+    /// threshold relative to `now`. A protocol upgrade is reported when the
+    /// protocol version differs from the previously observed version.
+    pub fn evaluate(&mut self, snapshot: &LedgerSnapshot, now: SystemTime) -> NetworkBanner {
+        let seconds_since_close = now
+            .duration_since(snapshot.closed_at)
+            .unwrap_or(Duration::ZERO)
+            .as_secs();
+
+        let protocol_changed = self
+            .last_protocol_version
+            .is_some_and(|prev| prev != snapshot.protocol_version);
+        self.last_protocol_version = Some(snapshot.protocol_version);
+
+        if seconds_since_close > self.halt_threshold.as_secs() {
+            return NetworkBanner {
+                health: NetworkHealth::Halted,
+                severity: "critical".to_string(),
+                title: "Stellar network halt detected".to_string(),
+                message: format!(
+                    "No ledger has closed in {seconds_since_close}s (threshold {}s). \
+                     Corridor alerts are paused until the network resumes.",
+                    self.halt_threshold.as_secs()
+                ),
+                seconds_since_close: Some(seconds_since_close),
+                protocol_version: Some(snapshot.protocol_version),
+                suppress_alerts: true,
+            };
+        }
+
+        if protocol_changed {
+            return NetworkBanner {
+                health: NetworkHealth::ProtocolUpgrade,
+                severity: "info".to_string(),
+                title: "Stellar protocol upgrade".to_string(),
+                message: format!(
+                    "The network upgraded to protocol version {}.",
+                    snapshot.protocol_version
+                ),
+                seconds_since_close: Some(seconds_since_close),
+                protocol_version: Some(snapshot.protocol_version),
+                suppress_alerts: false,
+            };
+        }
+
+        NetworkBanner {
+            health: NetworkHealth::Healthy,
+            severity: "info".to_string(),
+            title: "Stellar network healthy".to_string(),
+            message: "Ledgers are closing normally.".to_string(),
+            seconds_since_close: Some(seconds_since_close),
+            protocol_version: Some(snapshot.protocol_version),
+            suppress_alerts: false,
+        }
+    }
+
+    /// Whether corridor alerts should currently be suppressed.
+    #[must_use]
+    pub fn alerts_suppressed(&self, banner: &NetworkBanner) -> bool {
+        banner.suppress_alerts
+    }
 }
 
 #[cfg(test)]
@@ -197,5 +367,62 @@ mod tests {
         assert!(!testnet_config.is_mainnet());
         assert!(testnet_config.is_testnet());
         assert_eq!(testnet_config.display_name(), "Stellar Testnet");
+    }
+
+    fn snapshot(sequence: u64, protocol_version: u32, closed_at: SystemTime) -> LedgerSnapshot {
+        LedgerSnapshot {
+            sequence,
+            protocol_version,
+            closed_at,
+        }
+    }
+
+    #[test]
+    fn test_healthy_network() {
+        let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let snap = snapshot(100, 20, now - Duration::from_secs(5));
+        let mut tracker = NetworkStatusTracker::new(60);
+
+        let banner = tracker.evaluate(&snap, now);
+        assert_eq!(banner.health, NetworkHealth::Healthy);
+        assert!(!banner.suppress_alerts);
+        assert_eq!(banner.seconds_since_close, Some(5));
+    }
+
+    #[test]
+    fn test_halt_detected_and_alerts_suppressed() {
+        let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let snap = snapshot(100, 20, now - Duration::from_secs(120));
+        let mut tracker = NetworkStatusTracker::new(60);
+
+        let banner = tracker.evaluate(&snap, now);
+        assert_eq!(banner.health, NetworkHealth::Halted);
+        assert!(banner.suppress_alerts);
+        assert!(tracker.alerts_suppressed(&banner));
+        assert_eq!(banner.severity, "critical");
+    }
+
+    #[test]
+    fn test_protocol_upgrade_detected() {
+        let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let mut tracker = NetworkStatusTracker::new(60);
+
+        let first = snapshot(100, 20, now - Duration::from_secs(5));
+        assert_eq!(
+            tracker.evaluate(&first, now).health,
+            NetworkHealth::Healthy
+        );
+
+        let upgraded = snapshot(101, 21, now - Duration::from_secs(5));
+        let banner = tracker.evaluate(&upgraded, now);
+        assert_eq!(banner.health, NetworkHealth::ProtocolUpgrade);
+        assert_eq!(banner.protocol_version, Some(21));
+        assert!(!banner.suppress_alerts);
+    }
+
+    #[test]
+    fn test_parse_rfc3339() {
+        assert!(parse_rfc3339("2024-01-01T00:00:00Z").is_some());
+        assert!(parse_rfc3339("not-a-date").is_none());
     }
 }

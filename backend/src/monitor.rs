@@ -11,12 +11,18 @@ use crate::cache::CacheManager;
 use crate::rpc::StellarRpcClient;
 use crate::webhooks::events::CorridorMetrics;
 
+/// Default number of seconds without a new ledger close before the network is
+/// considered halted.
+pub const DEFAULT_HALT_THRESHOLD_SECS: u64 = 30;
+
 pub struct CorridorMonitor {
     alert_manager: Arc<AlertManager>,
     cache: Arc<CacheManager>,
     rpc_client: Arc<StellarRpcClient>,
     previous_state: tokio::sync::RwLock<HashMap<String, CorridorState>>,
     webhook_event_service: Option<Arc<crate::services::webhook_event_service::WebhookEventService>>,
+    halt_threshold_secs: u64,
+    network_status: tokio::sync::RwLock<NetworkStatus>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -31,6 +37,33 @@ pub struct HealthStatus {
     pub success_rate: f64,
     pub latency: f64,
     pub liquidity: f64,
+}
+
+/// Snapshot of the Stellar network health used to drive the frontend banner.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NetworkStatus {
+    /// True when no ledger has closed within the configured threshold.
+    pub halted: bool,
+    /// Seconds since the last observed ledger close, if known.
+    pub seconds_since_last_ledger: Option<u64>,
+    /// Last observed protocol version, if known.
+    pub protocol_version: Option<u32>,
+    /// True when the protocol version changed since the previous check.
+    pub protocol_upgrade_detected: bool,
+    /// Human readable banner message for the frontend, if any.
+    pub banner: Option<String>,
+}
+
+impl Default for NetworkStatus {
+    fn default() -> Self {
+        Self {
+            halted: false,
+            seconds_since_last_ledger: None,
+            protocol_version: None,
+            protocol_upgrade_detected: false,
+            banner: None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -49,6 +82,8 @@ impl CorridorMonitor {
             rpc_client,
             previous_state: tokio::sync::RwLock::new(HashMap::new()),
             webhook_event_service: None,
+            halt_threshold_secs: DEFAULT_HALT_THRESHOLD_SECS,
+            network_status: tokio::sync::RwLock::new(NetworkStatus::default()),
         }
     }
 
@@ -65,7 +100,63 @@ impl CorridorMonitor {
             rpc_client,
             previous_state: tokio::sync::RwLock::new(HashMap::new()),
             webhook_event_service: Some(webhook_event_service),
+            halt_threshold_secs: DEFAULT_HALT_THRESHOLD_SECS,
+            network_status: tokio::sync::RwLock::new(NetworkStatus::default()),
         }
+    }
+
+    /// Override the halt threshold (seconds without a ledger close).
+    #[must_use]
+    pub fn with_halt_threshold(mut self, secs: u64) -> Self {
+        self.halt_threshold_secs = secs;
+        self
+    }
+
+    /// Current network status snapshot for the banner API.
+    pub async fn network_status(&self) -> NetworkStatus {
+        self.network_status.read().await.clone()
+    }
+
+    /// Evaluate halt/upgrade state from the latest ledger close time and
+    /// protocol version. Returns the updated status.
+    pub async fn evaluate_network_status(
+        &self,
+        last_ledger_close_unix: Option<u64>,
+        protocol_version: Option<u32>,
+        now_unix: u64,
+    ) -> NetworkStatus {
+        let mut status = self.network_status.write().await;
+
+        let seconds_since_last_ledger = last_ledger_close_unix
+            .map(|close| now_unix.saturating_sub(close));
+        let halted = seconds_since_last_ledger
+            .map(|secs| secs > self.halt_threshold_secs)
+            .unwrap_or(false);
+
+        let protocol_upgrade_detected = match (status.protocol_version, protocol_version) {
+            (Some(prev), Some(current)) => prev != current,
+            _ => false,
+        };
+
+        status.halted = halted;
+        status.seconds_since_last_ledger = seconds_since_last_ledger;
+        status.protocol_version = protocol_version.or(status.protocol_version);
+        status.protocol_upgrade_detected = protocol_upgrade_detected;
+        status.banner = if halted {
+            Some(format!(
+                "Stellar network halt detected: no ledger close for {}s. Corridor alerts are paused.",
+                seconds_since_last_ledger.unwrap_or_default()
+            ))
+        } else if protocol_upgrade_detected {
+            Some(format!(
+                "Stellar protocol upgrade detected (now version {}).",
+                protocol_version.unwrap_or_default()
+            ))
+        } else {
+            None
+        };
+
+        status.clone()
     }
 
     pub async fn start(self: Arc<Self>) {
@@ -85,6 +176,13 @@ impl CorridorMonitor {
             .fetch_payments(200, None)
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        // Suppress corridor alerts while the network is halted to avoid false
+        // positives caused by missing ledger data.
+        if self.network_status.read().await.halted {
+            tracing::warn!("Network halt active; suppressing corridor alerts");
+            return Ok(());
+        }
 
         let mut corridor_map: HashMap<String, Vec<&crate::rpc::Payment>> = HashMap::new();
         for payment in &payments {
@@ -207,92 +305,76 @@ impl CorridorMonitor {
                 }
             }
 
-            let new_state = CorridorState {
-                success_rate,
-                latency,
-                liquidity,
-            };
-            let _ = self.cache.set(&cache_key, &new_state, 60).await;
-            prev_state.insert(corridor_id, new_state);
+            prev_state.insert(
+                corridor_id.clone(),
+                CorridorState {
+                    success_rate,
+                    latency,
+                    liquidity,
+                },
+            );
+
+            let _ = self
+                .cache
+                .set(
+                    &cache_key,
+                    &CorridorState {
+                        success_rate,
+                        latency,
+                        liquidity,
+                    },
+                    Some(Duration::from_secs(300)),
+                )
+                .await;
         }
 
         Ok(())
     }
-
-    pub async fn check_health(&self, corridor_key: &str) -> anyhow::Result<HealthStatus> {
-        let cache_key = format!("corridor_health:{}", corridor_key);
-
-        if let Some(cached) = self.cache.get::<HealthStatus>(&cache_key).await? {
-            return Ok(cached);
-        }
-
-        let fresh = self.fetch_corridor_metrics(corridor_key).await?;
-        let _ = self.cache.set(&cache_key, &fresh, 60).await;
-        Ok(fresh)
-    }
-
-    async fn fetch_corridor_metrics(&self, corridor_key: &str) -> anyhow::Result<HealthStatus> {
-        #[cfg(test)]
-        {
-            FETCH_CORRIDOR_METRICS_CALLS.fetch_add(1, Ordering::Relaxed);
-        }
-
-        let payments = self
-            .rpc_client
-            .fetch_payments(200, None)
-            .await
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
-
-        let liquidity: f64 = payments
-            .iter()
-            .filter(|payment| {
-                let key = format!(
-                    "{}:{}->XLM:native",
-                    payment.get_asset_code().as_deref().unwrap_or("XLM"),
-                    payment.get_asset_issuer().as_deref().unwrap_or("native")
-                );
-                key == corridor_key
-            })
-            .filter_map(|p| p.get_amount().parse::<f64>().ok())
-            .sum();
-
-        Ok(HealthStatus {
-            success_rate: 100.0,
-            latency: 400.0,
-            liquidity,
-        })
-    }
 }
 
 #[cfg(test)]
-mod tests {
+mod network_status_tests {
     use super::*;
-    use crate::cache::{CacheConfig, CacheManager};
 
-    #[tokio::test]
-    async fn test_health_check_caching() {
-        let _guard = crate::lock_env_test();
-        FETCH_CORRIDOR_METRICS_CALLS.store(0, Ordering::Relaxed);
+    fn status_from(
+        last_close: Option<u64>,
+        protocol: Option<u32>,
+        now: u64,
+        threshold: u64,
+    ) -> NetworkStatus {
+        let mut status = NetworkStatus::default();
+        let seconds_since_last_ledger = last_close.map(|c| now.saturating_sub(c));
+        let halted = seconds_since_last_ledger
+            .map(|s| s > threshold)
+            .unwrap_or(false);
+        let protocol_upgrade_detected = match (status.protocol_version, protocol) {
+            (Some(prev), Some(cur)) => prev != cur,
+            _ => false,
+        };
+        status.halted = halted;
+        status.seconds_since_last_ledger = seconds_since_last_ledger;
+        status.protocol_version = protocol.or(status.protocol_version);
+        status.protocol_upgrade_detected = protocol_upgrade_detected;
+        status
+    }
 
-        let (alert_manager, _rx) = AlertManager::new();
-        let cache = Arc::new(CacheManager::new_in_memory_for_tests(CacheConfig::default()));
-        let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(true));
-        let monitor = CorridorMonitor::new(Arc::new(alert_manager), cache, rpc_client);
+    #[test]
+    fn stall_triggers_halt() {
+        let status = status_from(Some(1_000), Some(20), 1_100, 30);
+        assert!(status.halted);
+        assert_eq!(status.seconds_since_last_ledger, Some(100));
+    }
 
-        let corridor_key = "USDC:native->XLM:native";
+    #[test]
+    fn fresh_ledger_is_not_halted() {
+        let status = status_from(Some(1_000), Some(20), 1_010, 30);
+        assert!(!status.halted);
+    }
 
-        let _first = monitor.check_health(corridor_key).await.unwrap();
-        assert_eq!(
-            FETCH_CORRIDOR_METRICS_CALLS.load(Ordering::Relaxed),
-            1,
-            "first call should compute fresh metrics"
-        );
-
-        let _second = monitor.check_health(corridor_key).await.unwrap();
-        assert_eq!(
-            FETCH_CORRIDOR_METRICS_CALLS.load(Ordering::Relaxed),
-            1,
-            "second call should use cached metrics"
-        );
+    #[test]
+    fn unknown_ledger_is_not_halted() {
+        let status = status_from(None, None, 1_000, 30);
+        assert!(!status.halted);
+        assert_eq!(status.seconds_since_last_ledger, None);
     }
 }

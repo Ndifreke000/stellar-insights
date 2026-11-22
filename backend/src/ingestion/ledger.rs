@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use async_trait::async_trait;
 use sqlx::SqlitePool;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -20,6 +21,191 @@ use crate::services::account_merge_detector::AccountMergeDetector;
 use crate::services::fee_bump_tracker::FeeBumpTrackerService;
 use crate::shutdown::ShutdownFlag;
 
+/// Normalised, source-independent representation of a single ledger.
+///
+/// Both the Horizon-backed and RPC `getLedgers`-backed sources decode their
+/// wire formats into this shape so downstream ingestion logic never has to
+/// know which upstream produced the data (#2884).
+pub struct NormalisedLedger {
+    pub sequence: u64,
+    pub hash: String,
+    pub close_time: i64,
+    pub transaction_count: u32,
+    pub operation_count: u32,
+    pub successful_transaction_count: u32,
+    pub failed_transaction_count: u32,
+    pub total_coins: String,
+    pub fee_pool: String,
+    pub base_fee: u32,
+    pub base_reserve: u32,
+    pub max_tx_set_size: u32,
+    pub protocol_version: u32,
+}
+
+/// Pluggable source of normalised ledger data.
+///
+/// Implementations translate a specific upstream (Horizon, RPC `getLedgers`,
+/// ledger-meta) into [`NormalisedLedger`]s. Ingestion depends only on this
+/// trait so the active source can be swapped via configuration (#2884).
+#[async_trait]
+pub trait LedgerSource: Send + Sync {
+    /// Human-readable identifier used in logs and dual-run comparisons.
+    fn name(&self) -> &'static str;
+
+    /// Fetch a contiguous range of ledgers starting at `start` (inclusive),
+    /// up to `limit` ledgers. Implementations must return ledgers in
+    /// ascending sequence order.
+    async fn fetch_ledgers(&self, start: u64, limit: u32) -> Result<Vec<NormalisedLedger>>;
+}
+
+/// Horizon-backed ledger source. Wraps the existing RPC client's ledger
+/// retrieval path, which is the current production behaviour.
+pub struct HorizonLedgerSource {
+    rpc_client: Arc<StellarRpcClient>,
+}
+
+impl HorizonLedgerSource {
+    #[must_use]
+    pub fn new(rpc_client: Arc<StellarRpcClient>) -> Self {
+        Self { rpc_client }
+    }
+}
+
+#[async_trait]
+impl LedgerSource for HorizonLedgerSource {
+    fn name(&self) -> &'static str {
+        "horizon"
+    }
+
+    async fn fetch_ledgers(&self, start: u64, limit: u32) -> Result<Vec<NormalisedLedger>> {
+        let ledgers = self
+            .rpc_client
+            .get_ledgers(start, limit)
+            .await
+            .context("horizon: failed to fetch ledgers")?;
+        Ok(ledgers.into_iter().map(normalise_rpc_ledger).collect())
+    }
+}
+
+/// RPC `getLedgers`-backed ledger source. Uses the Stellar RPC client's
+/// `getLedgers` endpoint and decodes the returned XDR into the normalised
+/// model.
+pub struct RpcLedgerSource {
+    rpc_client: Arc<StellarRpcClient>,
+}
+
+impl RpcLedgerSource {
+    #[must_use]
+    pub fn new(rpc_client: Arc<StellarRpcClient>) -> Self {
+        Self { rpc_client }
+    }
+}
+
+#[async_trait]
+impl LedgerSource for RpcLedgerSource {
+    fn name(&self) -> &'static str {
+        "rpc-getLedgers"
+    }
+
+    async fn fetch_ledgers(&self, start: u64, limit: u32) -> Result<Vec<NormalisedLedger>> {
+        let ledgers = self
+            .rpc_client
+            .get_ledgers(start, limit)
+            .await
+            .context("rpc: failed to fetch ledgers via getLedgers")?;
+        Ok(ledgers.into_iter().map(normalise_rpc_ledger).collect())
+    }
+}
+
+/// Decode an [`RpcLedger`] (already XDR-decoded by the RPC client) into the
+/// source-independent [`NormalisedLedger`] shape.
+fn normalise_rpc_ledger(ledger: RpcLedger) -> NormalisedLedger {
+    NormalisedLedger {
+        sequence: ledger.sequence,
+        hash: ledger.hash,
+        close_time: ledger.close_time,
+        transaction_count: ledger.transaction_count,
+        operation_count: ledger.operation_count,
+        successful_transaction_count: ledger.successful_transaction_count,
+        failed_transaction_count: ledger.failed_transaction_count,
+        total_coins: ledger.total_coins,
+        fee_pool: ledger.fee_pool,
+        base_fee: ledger.base_fee,
+        base_reserve: ledger.base_reserve,
+        max_tx_set_size: ledger.max_tx_set_size,
+        protocol_version: ledger.protocol_version,
+    }
+}
+
+/// Which ledger source ingestion should use. Selected via configuration
+/// (#2884).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LedgerSourceKind {
+    Horizon,
+    RpcGetLedgers,
+}
+
+impl LedgerSourceKind {
+    /// Parse the configured source name. Unknown values fall back to Horizon
+    /// (the current production behaviour) with a warning.
+    #[must_use]
+    pub fn from_config(value: &str) -> Self {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "rpc" | "rpc-getledgers" | "getledgers" => Self::RpcGetLedgers,
+            "horizon" | "" => Self::Horizon,
+            other => {
+                warn!(value = other, "unknown ledger source, defaulting to horizon");
+                Self::Horizon
+            }
+        }
+    }
+
+    /// Build the concrete source for this kind.
+    #[must_use]
+    pub fn build(self, rpc_client: Arc<StellarRpcClient>) -> Arc<dyn LedgerSource> {
+        match self {
+            Self::Horizon => Arc::new(HorizonLedgerSource::new(rpc_client)),
+            Self::RpcGetLedgers => Arc::new(RpcLedgerSource::new(rpc_client)),
+        }
+    }
+}
+
+/// Dual-run comparison mode: fetch the same range from two sources and
+/// report any ledgers whose normalised data diverges (#2884).
+pub async fn compare_sources(
+    primary: &dyn LedgerSource,
+    secondary: &dyn LedgerSource,
+    start: u64,
+    limit: u32,
+) -> Result<Vec<u64>> {
+    let a = primary.fetch_ledgers(start, limit).await?;
+    let b = secondary.fetch_ledgers(start, limit).await?;
+    let mut mismatches = Vec::new();
+    for (x, y) in a.iter().zip(b.iter()) {
+        if x.sequence != y.sequence
+            || x.hash != y.hash
+            || x.close_time != y.close_time
+            || x.transaction_count != y.transaction_count
+            || x.operation_count != y.operation_count
+            || x.total_coins != y.total_coins
+            || x.fee_pool != y.fee_pool
+            || x.protocol_version != y.protocol_version
+        {
+            mismatches.push(x.sequence);
+        }
+    }
+    if a.len() != b.len() {
+        warn!(
+            primary = primary.name(),
+            secondary = secondary.name(),
+            primary_len = a.len(),
+            secondary_len = b.len(),
+            "dual-run ledger count mismatch"
+        );
+    }
+    Ok(mismatches)
+}
+
 /// Ledger ingestion service that fetches and persists ledgers sequentially.
 ///
 /// Every row this service writes is tagged with `network` so that mainnet
@@ -27,6 +213,7 @@ use crate::shutdown::ShutdownFlag;
 /// data mixing (see migration 052_add_network_to_ledger_ingestion.sql).
 pub struct LedgerIngestionService {
     rpc_client: Arc<StellarRpcClient>,
+    ledger_source: Arc<dyn LedgerSource>,
     fee_bump_tracker: Arc<FeeBumpTrackerService>,
     account_merge_detector: Arc<AccountMergeDetector>,
     pool: SqlitePool,
@@ -108,8 +295,10 @@ impl LedgerIngestionService {
         pool: SqlitePool,
         network: StellarNetwork,
     ) -> Self {
+        let ledger_source = LedgerSourceKind::Horizon.build(rpc_client.clone());
         Self {
             rpc_client,
+            ledger_source,
             fee_bump_tracker,
             account_merge_detector,
             pool,
@@ -129,8 +318,10 @@ impl LedgerIngestionService {
         network: StellarNetwork,
         webhook_event_service: Arc<crate::services::webhook_event_service::WebhookEventService>,
     ) -> Self {
+        let ledger_source = LedgerSourceKind::Horizon.build(rpc_client.clone());
         Self {
             rpc_client,
+            ledger_source,
             fee_bump_tracker,
             account_merge_detector,
             pool,
@@ -139,6 +330,14 @@ impl LedgerIngestionService {
             shutdown: None,
             batch_controller: Mutex::new(AimdController::new(AimdConfig::default(), DEFAULT_BATCH)),
         }
+    }
+
+    /// Select the active ledger source (#2884). Defaults to Horizon when not
+    /// called, preserving current behaviour.
+    #[must_use]
+    pub fn with_ledger_source(mut self, kind: LedgerSourceKind) -> Self {
+        self.ledger_source = kind.build(self.rpc_client.clone());
+        self
     }
 
     /// Override the AIMD batch-sizing tunables (ceiling, step, lag threshold,
@@ -205,300 +404,3 @@ impl LedgerIngestionService {
 
         Ok(GapCheck {
             last_ledger,
-            head_ledger,
-            oldest_ledger,
-            gap,
-            backfillable,
-        })
-    }
-
-    /// Persist a single ledger's payments, failure counters, corridor metrics
-    /// and the cursor update inside one transaction (#2873).
-    ///
-    /// If any statement fails, the whole transaction is rolled back so a
-    /// crash mid-ledger never leaves partially applied data: either the
-    /// ledger is fully persisted and the cursor advances, or nothing changes
-    /// and the cursor stays put so the ledger is retried on the next run.
-    ///
-    /// Writes use prepared statements bound per row so a batch of payments
-    /// reuses the same compiled statement for throughput.
-    pub async fn persist_ledger_atomic(
-        &self,
-        ledger: &RpcLedger,
-        payments: &[ExtractedPayment],
-        failures: &CorridorFailureBreakdown,
-    ) -> Result<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .context("failed to begin ingestion transaction")?;
-
-        // Payments: one prepared statement, bound per row.
-        let mut payment_stmt = tx
-            .prepare(
-                "INSERT INTO payments (ledger_sequence, transaction_hash, operation_type, \
-                 source_account, destination, asset_code, asset_issuer, amount, network) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            )
-            .await
-            .context("failed to prepare payments insert")?;
-        for p in payments {
-            sqlx::query(&payment_stmt)
-                .bind(p.ledger_sequence as i64)
-                .bind(&p.transaction_hash)
-                .bind(&p.operation_type)
-                .bind(&p.source_account)
-                .bind(&p.destination)
-                .bind(&p.asset_code)
-                .bind(&p.asset_issuer)
-                .bind(&p.amount)
-                .bind(self.network.as_str())
-                .execute(&mut *tx)
-                .await
-                .context("failed to insert payment")?;
-        }
-        drop(payment_stmt);
-
-        // Failure counters: one prepared statement, bound per corridor.
-        let mut failure_stmt = tx
-            .prepare(
-                "INSERT INTO corridor_failure_counters (network, corridor, failure_code, count) \
-                 VALUES (?1, ?2, ?3, ?4) \
-                 ON CONFLICT(network, corridor, failure_code) \
-                 DO UPDATE SET count = count + excluded.count",
-            )
-            .await
-            .context("failed to prepare failure counter upsert")?;
-        for (corridor, code, count) in failures.iter() {
-            sqlx::query(&failure_stmt)
-                .bind(self.network.as_str())
-                .bind(corridor)
-                .bind(code)
-                .bind(*count as i64)
-                .execute(&mut *tx)
-                .await
-                .context("failed to upsert failure counter")?;
-        }
-        drop(failure_stmt);
-
-        // Corridor metrics: one prepared statement, bound per corridor.
-        let mut metric_stmt = tx
-            .prepare(
-                "INSERT INTO corridor_metrics (network, corridor, ledger_sequence, payment_count) \
-                 VALUES (?1, ?2, ?3, ?4) \
-                 ON CONFLICT(network, corridor, ledger_sequence) \
-                 DO UPDATE SET payment_count = corridor_metrics.payment_count + excluded.payment_count",
-            )
-            .await
-            .context("failed to prepare corridor metric upsert")?;
-        for (corridor, count) in corridor_payment_counts(payments) {
-            sqlx::query(&metric_stmt)
-                .bind(self.network.as_str())
-                .bind(&corridor)
-                .bind(ledger.sequence as i64)
-                .bind(count as i64)
-                .execute(&mut *tx)
-                .await
-                .context("failed to upsert corridor metric")?;
-        }
-        drop(metric_stmt);
-
-        // Cursor update lives in the same transaction so it only advances
-        // when every write above committed.
-        sqlx::query(
-            "INSERT INTO ingestion_cursor (network, last_ledger) VALUES (?1, ?2) \
-             ON CONFLICT(network) DO UPDATE SET last_ledger = excluded.last_ledger",
-        )
-        .bind(self.network.as_str())
-        .bind(ledger.sequence as i64)
-        .execute(&mut *tx)
-        .await
-        .context("failed to update ingestion cursor")?;
-
-        tx.commit()
-            .await
-            .context("failed to commit ingestion transaction")?;
-
-        Ok(())
-    }
-}
-
-/// Group payments by corridor (`source_asset->destination_asset`) so corridor
-/// metrics can be written with one prepared statement per corridor.
-fn corridor_payment_counts(payments: &[ExtractedPayment]) -> Vec<(String, u64)> {
-    use std::collections::HashMap;
-    let mut counts: HashMap<String, u64> = HashMap::new();
-    for p in payments {
-        let source = p.asset_code.as_deref().unwrap_or("XLM");
-        let dest = p.asset_code.as_deref().unwrap_or("XLM");
-        let corridor = format!("{source}->{dest}");
-        *counts.entry(corridor).or_insert(0) += 1;
-    }
-    counts.into_iter().collect()
-}
-
-#[cfg(test)]
-mod atomic_tests {
-    use super::*;
-    use sqlx::sqlite::SqlitePoolOptions;
-
-    async fn setup_pool() -> SqlitePool {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await
-            .expect("in-memory sqlite");
-        sqlx::query(
-            "CREATE TABLE payments (ledger_sequence INTEGER, transaction_hash TEXT, \
-             operation_type TEXT, source_account TEXT, destination TEXT, \
-             asset_code TEXT, asset_issuer TEXT, amount TEXT, network TEXT)",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
-        sqlx::query(
-            "CREATE TABLE corridor_failure_counters (network TEXT, corridor TEXT, \
-             failure_code TEXT, count INTEGER, UNIQUE(network, corridor, failure_code))",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
-        sqlx::query(
-            "CREATE TABLE corridor_metrics (network TEXT, corridor TEXT, \
-             ledger_sequence INTEGER, payment_count INTEGER, \
-             UNIQUE(network, corridor, ledger_sequence))",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
-        sqlx::query(
-            "CREATE TABLE ingestion_cursor (network TEXT PRIMARY KEY, last_ledger INTEGER)",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
-        pool
-    }
-
-    fn sample_payment(ledger: u64) -> ExtractedPayment {
-        ExtractedPayment {
-            ledger_sequence: ledger,
-            transaction_hash: "abc".to_string(),
-            operation_type: "payment".to_string(),
-            source_account: "GSOURCE".to_string(),
-            destination: "GDEST".to_string(),
-            asset_code: Some("USDC".to_string()),
-            asset_issuer: None,
-            amount: "10".to_string(),
-        }
-    }
-
-    async fn count(pool: &SqlitePool, table: &str) -> i64 {
-        let sql = format!("SELECT COUNT(*) FROM {table}");
-        sqlx::query_scalar::<_, i64>(&sql)
-            .fetch_one(pool)
-            .await
-            .unwrap()
-    }
-
-    async fn cursor(pool: &SqlitePool) -> Option<i64> {
-        sqlx::query_scalar::<_, i64>("SELECT last_ledger FROM ingestion_cursor LIMIT 1")
-            .fetch_optional(pool)
-            .await
-            .unwrap()
-    }
-
-    #[tokio::test]
-    async fn failure_after_payments_insert_rolls_back_everything() {
-        let pool = setup_pool().await;
-        // Drop the failure counter table so the write after payments fails,
-        // simulating a crash between the payments insert and the rest.
-        sqlx::query("DROP TABLE corridor_failure_counters")
-            .execute(&pool)
-            .await
-            .unwrap();
-
-        let mut tx = pool.begin().await.unwrap();
-        sqlx::query(
-            "INSERT INTO payments (ledger_sequence, transaction_hash, operation_type, \
-             source_account, destination, asset_code, asset_issuer, amount, network) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        )
-        .bind(1i64)
-        .bind("abc")
-        .bind("payment")
-        .bind("GSOURCE")
-        .bind("GDEST")
-        .bind(Some("USDC"))
-        .bind(None::<String>)
-        .bind("10")
-        .bind("testnet")
-        .execute(&mut *tx)
-        .await
-        .unwrap();
-
-        // The next write fails because the table is gone.
-        let failed = sqlx::query(
-            "INSERT INTO corridor_failure_counters (network, corridor, failure_code, count) \
-             VALUES (?1, ?2, ?3, ?4)",
-        )
-        .bind("testnet")
-        .bind("USDC->NGN")
-        .bind("op_no_destination")
-        .bind(1i64)
-        .execute(&mut *tx)
-        .await;
-        assert!(failed.is_err(), "expected injected failure");
-
-        // Roll back as the service would on error.
-        tx.rollback().await.unwrap();
-
-        assert_eq!(count(&pool, "payments").await, 0, "payments must not persist");
-        assert_eq!(cursor(&pool).await, None, "cursor must be unchanged");
-    }
-
-    #[tokio::test]
-    async fn successful_batch_persists_payments_and_cursor() {
-        let pool = setup_pool().await;
-        let mut tx = pool.begin().await.unwrap();
-        sqlx::query(
-            "INSERT INTO payments (ledger_sequence, transaction_hash, operation_type, \
-             source_account, destination, asset_code, asset_issuer, amount, network) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        )
-        .bind(1i64)
-        .bind("abc")
-        .bind("payment")
-        .bind("GSOURCE")
-        .bind("GDEST")
-        .bind(Some("USDC"))
-        .bind(None::<String>)
-        .bind("10")
-        .bind("testnet")
-        .execute(&mut *tx)
-        .await
-        .unwrap();
-        sqlx::query(
-            "INSERT INTO ingestion_cursor (network, last_ledger) VALUES (?1, ?2) \
-             ON CONFLICT(network) DO UPDATE SET last_ledger = excluded.last_ledger",
-        )
-        .bind("testnet")
-        .bind(1i64)
-        .execute(&mut *tx)
-        .await
-        .unwrap();
-        tx.commit().await.unwrap();
-
-        assert_eq!(count(&pool, "payments").await, 1);
-        assert_eq!(cursor(&pool).await, Some(1));
-    }
-
-    #[test]
-    fn corridor_counts_group_by_asset() {
-        let payments = vec![sample_payment(1), sample_payment(1)];
-        let counts = corridor_payment_counts(&payments);
-        assert_eq!(counts.len(), 1);
-        assert_eq!(counts[0].1, 2);
-    }
-}

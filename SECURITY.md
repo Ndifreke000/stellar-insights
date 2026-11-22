@@ -15,6 +15,14 @@ Include:
 We aim to acknowledge reports within **3 business days** and to provide a remediation
 plan within **10 business days**.
 
+## Threat Model
+
+The STRIDE threat model covering the backend, `contracts/payraider`, the SDKs and the
+mobile client — including data-flow diagrams, threat-to-mitigation mapping, a hardening
+checklist and a prioritised remediation list — lives in
+[docs/THREAT_MODEL.md](docs/THREAT_MODEL.md). It is the prerequisite for external audits
+and must be reviewed by two maintainers.
+
 ## Supported Versions
 
 Only the latest release on `main` receives security fixes.
