@@ -47,7 +47,7 @@ loop {
 | `RETENTION_SLEEP_MS` | `100` | Sleep between batches |
 | `VACUUM_ENABLED` | `true` | Enable incremental VACUUM |
 | `VACUUM_PAGES_PER_BATCH` | `100` | Pages to vacuum per batch |
-| `VACUUM_MAX_PAGES` | `10000` | Maximum pages to vacuum |
+| `VACUUM_MAX_PAGES` | `10000` | Maximum pages per run |
 
 ### Per-Table Configuration
 
@@ -77,6 +77,37 @@ This ensures:
 - Hourly/daily analytics persist for reporting
 - Trend analysis remains available
 - Storage is freed while preserving insights
+
+## API Key Request Log Retention
+
+Developer portal request logs (see issue #2877) are sampled, redacted per-key request records used for the self-serve usage dashboard. They follow the same non-blocking batched deletion strategy as other tables.
+
+### What is stored
+
+Each sampled log row contains only non-sensitive fields:
+
+- `api_key_id` — owning key (used to scope reads to the key owner)
+- `method` — HTTP method
+- `route` — normalized route template (no query string, no path params)
+- `status` — response status code
+- `latency_ms` — request duration
+- `created_at` — timestamp
+
+Request/response bodies, headers, query strings, IP addresses and any credential material are **never** persisted.
+
+### Retention policy
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `API_LOG_RETENTION_DAYS` | `14` | Days to keep sampled request logs |
+| `API_LOG_RETENTION_BATCH_SIZE` | `1000` | Rows per deletion batch |
+| `API_LOG_RETENTION_SLEEP_MS` | `100` | Sleep between batches |
+
+Logs older than `API_LOG_RETENTION_DAYS` are pruned in bounded batches so the API key dashboard stays responsive. Aggregates by route/status are computed from the retained window, so pruning only shortens the visible history — it never corrupts counts.
+
+### Access control
+
+Request logs and aggregates are only returned to the authenticated owner of the API key. Requests for another key's logs are rejected at the boundary with the project's standard error shape.
 
 ## Batch Deletion Details
 
@@ -263,4 +294,5 @@ RETENTION_SLEEP_MS=200
 
 - #2669 (Export row limits)
 - #2387 (Rate limiting)
+- #2877 (Developer portal: API key usage analytics and request logs)
 - Original retention issue: Database lock contention during retention jobs

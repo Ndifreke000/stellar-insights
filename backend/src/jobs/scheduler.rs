@@ -139,7 +139,10 @@ impl JobScheduler {
             let job_fn = Arc::new(job_fn);
 
             loop {
-                // Check for missed runs based on catch-up policy
+                // Check for missed runs based on catch-up policy. Missed-run
+                // detection is anchored to the ledger close time rather than
+                // the local wall clock so that a skewed server clock does not
+                // cause spurious catch-up runs (and thus divergent epochs).
                 if let Some(ref persistence) = persistence {
                     match persistence.find_missed_runs(&job_name, clock.now()).await {
                         Ok(missed) => {

@@ -27,6 +27,13 @@ pub async fn api_analytics_middleware(
         .get::<crate::auth_middleware::AuthUser>()
         .map(|u| u.user_id.clone());
 
+    // Extract the API key id if available so request logs can be scoped per key.
+    // Only the key identifier is stored; the raw key/secret is never persisted.
+    let api_key_id = req
+        .extensions()
+        .get::<crate::auth_middleware::ApiKeyIdentity>()
+        .map(|k| k.key_id.clone());
+
     let response = next.run(req).await;
 
     let duration = start.elapsed().as_millis() as i32;
@@ -42,18 +49,41 @@ pub async fn api_analytics_middleware(
             "INSERT INTO api_usage_stats (id, endpoint, method, status_code, response_time_ms, user_id, timestamp)
              VALUES (?, ?, ?, ?, ?, ?, ?)"
         )
-        .bind(id)
-        .bind(path)
+        .bind(&id)
+        .bind(&path)
         .bind(method.to_string())
         .bind(status)
         .bind(duration)
-        .bind(user_id)
+        .bind(&user_id)
         .bind(timestamp)
         .execute(db_clone.pool())
         .await;
 
         if let Err(e) = result {
             tracing::error!("Failed to record API usage stat: {}", e);
+        }
+
+        // Store a sampled, redacted request log entry per API key. Only the
+        // method, route, status, latency and timestamp are kept; query strings,
+        // headers and bodies are intentionally dropped to avoid leaking secrets.
+        if let Some(key_id) = api_key_id {
+            let log_result = sqlx::query(
+                "INSERT INTO api_request_logs (id, api_key_id, method, route, status_code, latency_ms, timestamp)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)"
+            )
+            .bind(Uuid::new_v4().to_string())
+            .bind(key_id)
+            .bind(method.to_string())
+            .bind(&path)
+            .bind(status)
+            .bind(duration)
+            .bind(timestamp)
+            .execute(db_clone.pool())
+            .await;
+
+            if let Err(e) = log_result {
+                tracing::error!("Failed to record API request log: {}", e);
+            }
         }
     });
 
