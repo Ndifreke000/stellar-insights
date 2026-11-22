@@ -1,171 +1,80 @@
-# @payraider/sdk
+# Stellar Insights TypeScript SDK
 
-Official TypeScript SDK for the [PayRaider](https://github.com/Ndifreke000/payraider) API — payment corridor reliability, liquidity, trustline, and network-health data for the Stellar network.
+TypeScript client for the Stellar Insights API and realtime feed.
 
 ## Install
 
 ```bash
-npm install @payraider/sdk
+npm install @stellar-insights/sdk
 ```
 
-## Quickstart
+## Usage
 
 ```ts
-import { createClient } from "@payraider/sdk";
+import { StellarInsightsClient } from '@stellar-insights/sdk';
 
-const client = createClient("mainnet"); // or "testnet"
-
-const corridors = await client.corridors.list();
-const usdcBrl = await client.corridors.get("USDC", "BRL");
-```
-
-### Custom configuration
-
-`createClient` covers the common case of pointing at PayRaider' own
-hosted API on mainnet or testnet. To talk to a self-hosted backend, or to
-set an API key, construct `PayRaider` directly:
-
-```ts
-import { PayRaider } from "@payraider/sdk";
-
-const client = new PayRaider({
-  baseUrl: "https://your-backend.example.com",
-  apiKey: process.env.PAYRAIDER_API_KEY,
+const client = new StellarInsightsClient({ baseUrl: 'http://localhost:8080' });
+const preflight = await client.preflight({
+  sourceAsset: 'USDC',
+  destinationAsset: 'NGN',
+  amountUsd: 2500,
 });
 ```
 
-### Check a corridor before paying
+## Realtime WebSocket client
 
-Off-ramp and payout apps can ask whether a corridor is healthy enough to pay
-on right now. No API key is needed.
+The SDK ships a typed, resumable WebSocket client. Channels are typed via the
+`ChannelMap` interface, so subscribers receive typed payloads for each channel.
 
 ```ts
-const check = await client.preflight.check({
-  source_asset: "USDC",
-  destination_asset: "NGN",
-  amount_usd: 2500,
+import { WebSocketManager } from '@stellar-insights/sdk';
+
+const ws = new WebSocketManager({
+  url: 'ws://localhost:8080/ws',
+  // Optional: resume from a known sequence number.
+  sinceSeq: 0,
 });
 
-if (check.decision === "proceed") {
-  // send the payment
-} else {
-  console.warn(check.summary, check.checks, check.alternatives);
-}
-```
-
-`decision` is `proceed`, `caution`, `hold` or `unknown` (no recent data for
-that corridor). `client.preflight.isSafeToPay(req)` returns `true` only for
-`proceed`.
-
-### Retries
-
-Requests are retried automatically:
-
-| | |
-| --- | --- |
-| Retried on | network errors, HTTP 429, 502, 503, 504 |
-| Not retried | other 4xx, 500, and any non-idempotent call (POST, PATCH) |
-| Idempotent methods | GET, HEAD, OPTIONS, PUT, DELETE — plus preflight and cost estimates, which are read-only POSTs |
-| Max retries | 3 after the first attempt |
-| Delay | the server's `Retry-After` (seconds or HTTP-date) when sent, otherwise full jitter: random(0, min(cap, base × 2^attempt)) |
-| Long `Retry-After` | longer than the cap: no retry, the error is raised with the value attached |
-
-The TypeScript and Python SDKs behave the same way.
-
-```ts
-import { PayRaider, PayRaiderError } from "@payraider/sdk";
-
-const client = new PayRaider({
-  maxRetries: 3,        // set to 0 to turn retries off
-  retryDelay: 500,      // base delay in ms
-  maxRetryDelay: 30_000 // cap on any single wait in ms
+// Typed subscription: `msg` is typed for the "corridors" channel.
+const unsubscribe = ws.subscribe('corridors', (msg) => {
+  console.log(msg.seq, msg.payload);
 });
 
-try {
-  await client.corridors.list();
-} catch (e) {
-  if (e instanceof PayRaiderError && e.status === 429) {
-    console.log("retry after", e.retryAfterMs, "ms");
-  }
-}
+await ws.connect();
+// ...
+unsubscribe();
+ws.close();
 ```
 
-### Types generated from the API spec
+### Reconnection and resume
 
-`ApiSchemas`, `ApiPaths` and `ApiOperations` are generated from
-[`docs/openapi.json`](../../docs/openapi.json), so they follow the API exactly:
+On an unexpected disconnect the client reconnects automatically using
+exponential backoff with jitter. When reconnecting it sends the last observed
+`seq` as `since_seq`, so the server can replay any missed messages. The client
+tracks the highest `seq` seen across all channels.
 
-```ts
-import type { ApiSchemas } from "@payraider/sdk";
+- `reconnect: false` disables automatic reconnection.
+- `maxRetries` caps the number of reconnect attempts (default `Infinity`).
+- `baseDelayMs` / `maxDelayMs` tune the backoff window.
 
-type Corridor = ApiSchemas["CorridorResponse"];
-type Preflight = ApiSchemas["PreflightResponse"];
-```
+### Node and browser support
 
-After the spec changes, run `npm run generate:types` and commit
-`src/types/generated.ts`. `npm run check:types` exits non-zero when the
-committed file is out of date.
-
-### Authentication
-
-```ts
-const { access_token } = await client.auth.login({ email, password });
-// subsequent requests on this client are now authenticated
-```
-
-### Real-time updates
+The client uses the global `WebSocket` implementation available in browsers and
+in Node 22+. For older Node versions, pass a compatible constructor via the
+`WebSocketImpl` option:
 
 ```ts
-client.subscribe((event) => {
-  console.log("network event:", event);
+import WebSocket from 'ws';
+
+const ws = new WebSocketManager({
+  url: 'ws://localhost:8080/ws',
+  WebSocketImpl: WebSocket as unknown as typeof globalThis.WebSocket,
 });
-
-// later
-client.disconnect();
 ```
-
-## What's included
-
-The client exposes one resource per API surface — each is a thin,
-type-safe wrapper over the REST API:
-
-| Resource | Purpose |
-| --- | --- |
-| `client.corridors` | Payment corridor reliability & liquidity depth |
-| `client.anchors` | Anchor directory and health |
-| `client.prices` | Asset price feeds |
-| `client.costCalculator` | Transaction cost estimation |
-| `client.preflight` | Pre-payment corridor check (proceed / caution / hold) |
-| `client.alerts` / `client.webhooks` | Alerting and webhook subscriptions |
-| `client.liquidityPools` | AMM liquidity pool data |
-| `client.transactions` | Transaction history and lookups |
-| `client.network` | Network-wide health and trust metrics |
-| `client.governance` | Soroban governance proposals and votes |
-| `client.assetVerification` | Asset authenticity verification |
-| `client.auth`, `client.apiKeys` | Authentication and API key management |
-
-Built-in cross-cutting behavior: automatic retry with backoff, request
-deduplication, request cancellation, and pagination helpers — see
-[`CHANGELOG.md`](../CHANGELOG.md) and [`COMPATIBILITY.md`](../COMPATIBILITY.md)
-for version history and compatibility guarantees.
-
-## Framework helpers
-
-Building a React app? See
-[`@payraider/react`](../react) for hooks and pre-built components on
-top of this SDK.
 
 ## Development
 
 ```bash
-npm ci
-npm test                  # unit tests, including the shared conformance cases
-npm test -- conformance   # only the cases in ../conformance
+npm install
+npm test
 ```
-
-The conformance cases are recorded HTTP exchanges both SDKs must handle the
-same way; see [`../conformance`](../conformance/README.md).
-
-## License
-
-MIT
