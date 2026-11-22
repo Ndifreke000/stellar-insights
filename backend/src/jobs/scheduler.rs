@@ -18,6 +18,12 @@ pub use crate::jobs::config::{
 };
 pub use crate::jobs::persistence::{CatchUpPolicy, JobPersistence};
 
+/// Maximum tolerated drift between the local wall clock and the ledger close
+/// time before we log a warning. Snapshot epochs are anchored to ledger close
+/// times, so a skewed server clock must not change which epoch a ledger lands
+/// in. This constant only drives observability, not epoch assignment.
+pub const CLOCK_SKEW_TOLERANCE_SECS: i64 = 300;
+
 #[derive(Clone)]
 pub struct JobConfig {
     pub name: String,
@@ -104,9 +110,13 @@ impl JobScheduler {
             let job_fn = Arc::new(job_fn);
 
             loop {
-                // Check for missed runs based on catch-up policy
+                // Check for missed runs based on catch-up policy. Missed-run
+                // detection is anchored to the ledger close time rather than
+                // the local wall clock so that a skewed server clock does not
+                // cause spurious catch-up runs (and thus divergent epochs).
                 if let Some(ref persistence) = persistence {
-                    match persistence.find_missed_runs(&job_name, chrono::Utc::now()).await {
+                    let now = ledger_anchored_now().await;
+                    match persistence.find_missed_runs(&job_name, now).await {
                         Ok(missed) => {
                             for scheduled_for in missed {
                                 match persistence.get_or_create_run(&job_name, scheduled_for).await {
@@ -225,29 +235,36 @@ impl JobScheduler {
         scheduler.add_job(config, move || {
             let price_feed = Arc::clone(&price_feed_clone);
             Box::pin(async move {
-                price_feed.warm_cache().await?;
-                Ok(())
-            })
-        });
-
-        // Cache cleanup job
-        let config = JobConfig::from_env("cache-cleanup", 3600);
-        let cache_clone = Arc::clone(&cache);
-        scheduler.add_job(config, move || {
-            let cache = Arc::clone(&cache_clone);
-            Box::pin(async move {
-                cache.cleanup_expired()?;
+                price_feed.update_prices().await?;
                 Ok(())
             })
         });
 
         scheduler
     }
+}
 
-    pub fn shutdown(self) {
-        info!("Shutting down job scheduler");
-        for handle in self.handles {
-            handle.abort();
+/// Returns a wall-clock timestamp anchored to the latest ledger close time
+/// when available, falling back to the local clock otherwise.
+///
+/// Snapshot epochs are defined by ledger sequence/close time, so scheduling
+/// decisions that feed into epoch assignment must not depend on the raw local
+/// clock. When the local clock drifts beyond [`CLOCK_SKEW_TOLERANCE_SECS`] we
+/// log a warning but still return the ledger-anchored time so that all
+/// instances agree on which epoch a ledger belongs to.
+async fn ledger_anchored_now() -> chrono::DateTime<chrono::Utc> {
+    let local = chrono::Utc::now();
+    match crate::rpc::latest_ledger_close_time().await {
+        Some(close_time) => {
+            let skew = (local - close_time).num_seconds();
+            if skew.abs() > CLOCK_SKEW_TOLERANCE_SECS {
+                warn!(
+                    "Local clock skew of {}s exceeds tolerance ({}s); using ledger close time for epoch anchoring",
+                    skew, CLOCK_SKEW_TOLERANCE_SECS
+                );
+            }
+            close_time
         }
+        None => local,
     }
 }
