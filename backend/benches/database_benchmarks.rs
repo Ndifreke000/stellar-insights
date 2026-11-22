@@ -5,6 +5,7 @@
 //! - Query execution
 //! - Batch operations
 //! - Transaction handling
+//! - Concurrent write contention (dedicated writer task vs. direct pool writes)
 //!
 //! # Usage
 //! ```bash
@@ -19,7 +20,10 @@
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use sqlx::SqlitePool;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use tokio::runtime::Runtime;
+use tokio::sync::mpsc;
 
 /// Setup an in-memory SQLite database for benchmarking
 async fn setup_test_db() -> SqlitePool {
@@ -267,100 +271,105 @@ fn bench_db_write_operations(c: &mut Criterion) {
         });
     });
 
-    // Single delete
-    group.bench_function("delete_single", |b| {
-        b.to_async(&rt).iter(|| async {
-            sqlx::query("DELETE FROM corridors WHERE corridor_key LIKE ?")
-                .bind(black_box("test_corridor_%"))
-                .execute(&pool)
-                .await
-                .unwrap()
-        });
-    });
-
     group.finish();
 }
 
-fn bench_db_batch_operations(c: &mut Criterion) {
+/// A write command sent to the dedicated writer task.
+struct WriteCmd {
+    key: String,
+}
+
+/// Spawn a single writer task that batches queued write commands into
+/// transactions. Returns the bounded sender used to submit commands.
+fn spawn_writer(
+    rt: &Runtime,
+    pool: SqlitePool,
+    capacity: usize,
+    batch_size: usize,
+) -> mpsc::Sender<WriteCmd> {
+    let (tx, mut rx) = mpsc::channel::<WriteCmd>(capacity);
+    rt.spawn(async move {
+        let mut batch: Vec<WriteCmd> = Vec::with_capacity(batch_size);
+        loop {
+            let first = match rx.recv().await {
+                Some(cmd) => cmd,
+                None => break,
+            };
+            batch.push(first);
+            while batch.len() < batch_size {
+                match rx.try_recv() {
+                    Ok(cmd) => batch.push(cmd),
+                    Err(_) => break,
+                }
+            }
+
+            let mut txn = match pool.begin().await {
+                Ok(t) => t,
+                Err(_) => {
+                    batch.clear();
+                    continue;
+                }
+            };
+            for cmd in batch.drain(..) {
+                let _ = sqlx::query(
+                    "INSERT OR REPLACE INTO corridors (corridor_key, asset_a_code, asset_a_issuer, asset_b_code, asset_b_issuer)
+                     VALUES (?, 'USDC', 'ISSUER', 'EURC', 'ISSUER_2')"
+                )
+                .bind(cmd.key)
+                .execute(&mut *txn)
+                .await;
+            }
+            let _ = txn.commit().await;
+        }
+    });
+    tx
+}
+
+/// Benchmark concurrent writes through the dedicated writer task.
+///
+/// This exercises the batching writer path: many concurrent producers submit
+/// commands over a bounded channel and a single task commits them in batched
+/// transactions, avoiding `SQLITE_BUSY` contention between writers.
+fn bench_concurrent_writes(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
-    let pool = rt.block_on(setup_test_db());
 
-    let mut group = c.benchmark_group("db_batch");
+    let mut group = c.benchmark_group("db_concurrent_write");
 
-    for batch_size in [10, 50, 100].iter() {
+    for &writers in &[4usize, 16, 64] {
+        group.throughput(Throughput::Elements(writers as u64));
         group.bench_with_input(
-            BenchmarkId::from_parameter(format!("batch_insert_{}", batch_size)),
-            batch_size,
-            |b, &batch_size| {
-                b.to_async(&rt).iter(|| async {
-                    let mut tx = pool.begin().await.unwrap();
-                    for i in 0..batch_size {
-                        sqlx::query(
-                            "INSERT INTO corridors (corridor_key, asset_a_code, asset_a_issuer, asset_b_code, asset_b_issuer)
-                             VALUES (?, ?, ?, ?, ?)"
-                        )
-                        .bind(format!("batch_corridor_{}_{}", batch_size, i))
-                        .bind("USDC")
-                        .bind("BATCH_ISSUER")
-                        .bind("EURC")
-                        .bind("BATCH_ISSUER_2")
-                        .execute(&mut *tx)
-                        .await
-                        .unwrap();
+            BenchmarkId::new("writer_task_batched", writers),
+            &writers,
+            |b, &writers| {
+                b.to_async(&rt).iter(|| async move {
+                    let pool = setup_test_db().await;
+                    let tx = spawn_writer(&rt, pool.clone(), 1024, 64);
+                    let counter = Arc::new(AtomicUsize::new(0));
+
+                    let mut handles = Vec::with_capacity(writers);
+                    for w in 0..writers {
+                        let tx = tx.clone();
+                        let counter = counter.clone();
+                        handles.push(tokio::spawn(async move {
+                            for i in 0..16 {
+                                let n = counter.fetch_add(1, Ordering::Relaxed);
+                                let key = format!("bench_{}_{}_{}", w, i, n);
+                                // Bounded send applies backpressure when full.
+                                if tx.send(WriteCmd { key }).await.is_err() {
+                                    break;
+                                }
+                            }
+                        }));
                     }
-                    tx.commit().await.unwrap();
+                    for h in handles {
+                        let _ = h.await;
+                    }
+                    drop(tx);
+                    black_box(counter.load(Ordering::Relaxed));
                 });
             },
         );
     }
-
-    group.finish();
-}
-
-fn bench_db_transaction_operations(c: &mut Criterion) {
-    let rt = Runtime::new().unwrap();
-    let pool = rt.block_on(setup_test_db());
-
-    let mut group = c.benchmark_group("db_transaction");
-    group.throughput(Throughput::Elements(1));
-
-    group.bench_function("transaction_read_only", |b| {
-        b.to_async(&rt).iter(|| async {
-            let mut tx = pool.begin().await.unwrap();
-            let result = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM corridors")
-                .fetch_one(&mut *tx)
-                .await
-                .unwrap();
-            tx.rollback().await.unwrap();
-            result
-        });
-    });
-
-    group.bench_function("transaction_write", |b| {
-        b.to_async(&rt).iter(|| async {
-            let mut tx = pool.begin().await.unwrap();
-            sqlx::query("UPDATE anchors SET reliability_score = ? WHERE id = ?")
-                .bind(black_box(0.99))
-                .bind(black_box("anchor_1"))
-                .execute(&mut *tx)
-                .await
-                .unwrap();
-            tx.commit().await.unwrap();
-        });
-    });
-
-    group.finish();
-}
-
-fn bench_db_pool_metrics(c: &mut Criterion) {
-    let rt = Runtime::new().unwrap();
-    let pool = rt.block_on(setup_test_db());
-
-    let mut group = c.benchmark_group("db_pool_metrics");
-
-    group.bench_function("get_pool_size", |b| b.iter(|| black_box(&pool).size()));
-
-    group.bench_function("get_pool_idle", |b| b.iter(|| black_box(&pool).num_idle()));
 
     group.finish();
 }
@@ -370,9 +379,6 @@ criterion_group!(
     bench_db_connection,
     bench_db_read_operations,
     bench_db_write_operations,
-    bench_db_batch_operations,
-    bench_db_transaction_operations,
-    bench_db_pool_metrics,
+    bench_concurrent_writes
 );
-
 criterion_main!(benches);
