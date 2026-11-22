@@ -35,6 +35,134 @@ pub mod service_mesh;
 pub mod websocket_real_time_updates;
 pub mod websocket_streaming_models;
 
+/// Number of decimal places used by Stellar asset amounts (stroops).
+pub const STROOPS_PER_UNIT: i128 = 10_000_000;
+
+/// Exact asset amount represented as an integer number of stroops (1e-7 units).
+///
+/// Stellar amounts have 7 decimal places; storing them as `i128` stroops avoids
+/// the precision loss that occurs when summing `f64` values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Amount(pub i128);
+
+impl Amount {
+    /// Zero amount.
+    pub const ZERO: Self = Self(0);
+
+    /// Construct from a raw stroop count.
+    #[must_use]
+    pub const fn from_stroops(stroops: i128) -> Self {
+        Self(stroops)
+    }
+
+    /// Return the raw stroop count.
+    #[must_use]
+    pub const fn stroops(self) -> i128 {
+        self.0
+    }
+
+    /// Parse a decimal string with up to 7 fractional digits into stroops.
+    ///
+    /// Returns `None` for malformed input or more than 7 fractional digits.
+    #[must_use]
+    pub fn parse(s: &str) -> Option<Self> {
+        let s = s.trim();
+        if s.is_empty() {
+            return None;
+        }
+        let (negative, digits) = match s.strip_prefix('-') {
+            Some(rest) => (true, rest),
+            None => (false, s.strip_prefix('+').unwrap_or(s)),
+        };
+        let (int_part, frac_part) = match digits.split_once('.') {
+            Some((i, f)) => (i, f),
+            None => (digits, ""),
+        };
+        if int_part.is_empty() && frac_part.is_empty() {
+            return None;
+        }
+        if frac_part.len() > 7 {
+            return None;
+        }
+        if !int_part.chars().all(|c| c.is_ascii_digit())
+            || !frac_part.chars().all(|c| c.is_ascii_digit())
+        {
+            return None;
+        }
+        let int_val: i128 = if int_part.is_empty() {
+            0
+        } else {
+            int_part.parse().ok()?
+        };
+        let mut frac_val: i128 = if frac_part.is_empty() {
+            0
+        } else {
+            frac_part.parse().ok()?
+        };
+        for _ in frac_part.len()..7 {
+            frac_val *= 10;
+        }
+        let total = int_val.checked_mul(STROOPS_PER_UNIT)?.checked_add(frac_val)?;
+        Some(Self(if negative { -total } else { total }))
+    }
+
+    /// Format as a decimal string with trailing zeros trimmed (e.g. `"1.5"`).
+    #[must_use]
+    pub fn to_string_trimmed(self) -> String {
+        let negative = self.0 < 0;
+        let abs = self.0.unsigned_abs();
+        let int_part = abs / STROOPS_PER_UNIT as u128;
+        let frac_part = abs % STROOPS_PER_UNIT as u128;
+        let mut out = String::new();
+        if negative {
+            out.push('-');
+        }
+        out.push_str(&int_part.to_string());
+        if frac_part != 0 {
+            let frac = format!("{:07}", frac_part);
+            let trimmed = frac.trim_end_matches('0');
+            out.push('.');
+            out.push_str(trimmed);
+        }
+        out
+    }
+
+    /// Checked addition; returns `None` on overflow.
+    #[must_use]
+    pub fn checked_add(self, other: Self) -> Option<Self> {
+        self.0.checked_add(other.0).map(Self)
+    }
+}
+
+impl std::fmt::Display for Amount {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.to_string_trimmed())
+    }
+}
+
+impl std::str::FromStr for Amount {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s).ok_or(())
+    }
+}
+
+impl std::ops::Add for Amount {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self(self.0 + rhs.0)
+    }
+}
+
+impl std::iter::Sum for Amount {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(Self::ZERO, |acc, x| acc + x)
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[derive(utoipa::ToSchema)]
@@ -282,313 +410,3 @@ pub struct PaymentRow {
     pub confirmation_time: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
 }
-
-impl PaymentRow {
-    #[must_use]
-    pub fn to_corridor(&self) -> crate::models::corridor::Corridor {
-        let src_code = if self.source_asset_code.is_empty() {
-            self.asset_code.clone().unwrap_or_default()
-        } else {
-            self.source_asset_code.clone()
-        };
-        let src_issuer = if self.source_asset_issuer.is_empty() {
-            self.asset_issuer.clone().unwrap_or_default()
-        } else {
-            self.source_asset_issuer.clone()
-        };
-        let dst_code = if self.destination_asset_code.is_empty() {
-            self.asset_code.clone().unwrap_or_default()
-        } else {
-            self.destination_asset_code.clone()
-        };
-        let dst_issuer = if self.destination_asset_issuer.is_empty() {
-            self.asset_issuer.clone().unwrap_or_default()
-        } else {
-            self.destination_asset_issuer.clone()
-        };
-
-        crate::models::corridor::Corridor::new(src_code, src_issuer, dst_code, dst_issuer)
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
-pub struct IngestionState {
-    pub task_name: String,
-    pub last_cursor: String,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
-pub struct FeeBumpTransaction {
-    pub transaction_hash: String,
-    pub ledger_sequence: i64,
-    pub fee_source: String,
-    pub fee_charged: i64,
-    pub max_fee: i64,
-    pub inner_transaction_hash: String,
-    pub inner_max_fee: i64,
-    pub signatures_count: i32,
-    /// Source account of the inner (wrapped) transaction. This is who actually
-    /// initiated the transaction and is the account success-rate / corridor
-    /// attribution should credit or charge, as opposed to `fee_source`, which
-    /// is only the account that paid the bumped fee.
-    pub inner_source: String,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
-pub struct FeeBumpStats {
-    pub total_fee_bumps: i64,
-    pub avg_fee_charged: f64,
-    pub max_fee_charged: i64,
-    pub min_fee_charged: i64,
-    pub unique_fee_sources: i64,
-    /// Distinct inner (originating) sources, i.e. attribution by the account
-    /// that actually submitted the wrapped transaction rather than the one
-    /// that fronted the fee.
-    pub unique_inner_sources: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
-pub struct LiquidityPool {
-    pub pool_id: String,
-    pub pool_type: String,
-    pub fee_bp: i32,
-    pub total_trustlines: i32,
-    pub total_shares: String,
-    pub reserve_a_asset_code: String,
-    pub reserve_a_asset_issuer: Option<String>,
-    pub reserve_a_amount: f64,
-    pub reserve_b_asset_code: String,
-    pub reserve_b_asset_issuer: Option<String>,
-    pub reserve_b_amount: f64,
-    pub total_value_usd: f64,
-    pub volume_24h_usd: f64,
-    pub fees_earned_24h_usd: f64,
-    pub apy: f64,
-    pub impermanent_loss_pct: f64,
-    pub trade_count_24h: i32,
-    pub last_synced_at: DateTime<Utc>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
-pub struct LiquidityPoolSnapshot {
-    pub id: i64,
-    pub pool_id: String,
-    pub reserve_a_amount: f64,
-    pub reserve_b_amount: f64,
-    pub total_value_usd: f64,
-    pub volume_usd: f64,
-    pub fees_usd: f64,
-    pub apy: f64,
-    pub impermanent_loss_pct: f64,
-    pub trade_count: i32,
-    pub snapshot_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
-pub struct LiquidityPoolStats {
-    pub total_pools: i64,
-    pub total_liquidity_usd: f64,
-    pub avg_pool_size_usd: f64,
-    pub total_value_locked_usd: f64,
-    pub total_volume_24h_usd: f64,
-    pub total_fees_24h_usd: f64,
-    pub avg_apy: f64,
-    pub avg_impermanent_loss: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
-pub struct LpSnapshotReturn {
-    pub snapshot_at: DateTime<Utc>,
-    pub fee_apr: f64,
-    pub impermanent_loss_pct: f64,
-    pub net_apr: f64,
-    pub cumulative_fees_usd: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
-pub struct LpReturnsAnalytics {
-    pub pool_id: String,
-    pub fee_apr: f64,
-    pub impermanent_loss_pct: f64,
-    pub net_apr: f64,
-    pub fee_income_24h_usd: f64,
-    pub fee_income_7d_usd: f64,
-    pub fee_income_30d_usd: f64,
-    pub price_source: String,
-    pub initial_price_ratio: f64,
-    pub current_price_ratio: f64,
-    pub hodl_value_usd: f64,
-    pub pool_value_usd: f64,
-    pub historical_returns: Vec<LpSnapshotReturn>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MuxedAccountAnalytics {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub total_muxed_accounts: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub active_accounts: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub top_accounts: Option<Vec<MuxedAccountUsage>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub total_muxed_payments: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub unique_muxed_addresses: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub top_muxed_by_activity: Option<Vec<MuxedAccountUsage>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub base_accounts_with_muxed: Option<Vec<String>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MuxedAccountUsage {
-    pub account_address: String,
-    pub base_account: Option<String>,
-    pub muxed_id: Option<u64>,
-    pub payment_count_as_source: i64,
-    pub payment_count_as_destination: i64,
-    pub total_payments: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
-pub struct PendingTransaction {
-    pub id: String,
-    pub source_account: String,
-    pub xdr: String,
-    pub required_signatures: i32,
-    pub status: String,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
-pub struct Signature {
-    pub id: String,
-    pub transaction_id: String,
-    pub signer: String,
-    pub signature: String,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
-pub struct PendingTransactionWithSignatures {
-    #[serde(flatten)]
-    pub transaction: PendingTransaction,
-    pub collected_signatures: Vec<Signature>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
-pub struct TransactionResult {
-    pub hash: String,
-    pub status: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
-pub struct TrustlineStat {
-    pub asset_code: String,
-    pub asset_issuer: String,
-    pub total_trustlines: i64,
-    pub authorized_trustlines: i64,
-    pub unauthorized_trustlines: i64,
-    pub total_supply: f64,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
-pub struct TrustlineSnapshot {
-    pub id: i64,
-    pub asset_code: String,
-    pub asset_issuer: String,
-    pub total_trustlines: i64,
-    pub authorized_trustlines: i64,
-    pub unauthorized_trustlines: i64,
-    pub total_supply: f64,
-    pub snapshot_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
-pub struct TrustlineMetrics {
-    pub total_assets_tracked: i64,
-    pub total_trustlines_across_network: i64,
-    pub active_assets: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
-pub struct ScoreComponentDetail {
-    pub name: String,
-    pub raw_metric: f64,
-    pub normalized_score: f64,
-    pub weight: f64,
-    pub weighted_score: f64,
-    pub description: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
-pub struct AnchorHealthScoreExplanation {
-    pub anchor_id: String,
-    pub methodology_version: String,
-    pub composite_score: f64,
-    pub status: String,
-    pub components: Vec<ScoreComponentDetail>,
-    pub methodology_doc_url: String,
-    pub computed_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
-pub struct StageLatencyStat {
-    pub stage: String,
-    pub p50_ms: f64,
-    pub p95_ms: f64,
-    pub avg_ms: f64,
-    pub sample_count: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
-pub struct AnchorSettlementStagesResponse {
-    pub anchor_id: String,
-    pub total_sample_count: i64,
-    pub stages: Vec<StageLatencyStat>,
-    pub overall_p50_ms: f64,
-    pub overall_p95_ms: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
-pub struct ApiUsageStat {
-    pub id: String,
-    pub endpoint: String,
-    pub method: String,
-    pub status_code: i32,
-    pub response_time_ms: i32,
-    pub user_id: Option<String>,
-    pub timestamp: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
-pub struct ApiAnalyticsOverview {
-    pub total_requests: i64,
-    pub avg_response_time_ms: f64,
-    pub error_rate: f64,
-    pub top_endpoints: Vec<EndpointStat>,
-    pub status_distribution: Vec<StatusStat>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
-pub struct EndpointStat {
-    pub endpoint: String,
-    pub method: String,
-    pub count: i64,
-    pub avg_response_time_ms: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
-pub struct StatusStat {
-    pub status_code: i32,
-    pub count: i64,
-}
-pub mod cost;
-pub mod retention;
