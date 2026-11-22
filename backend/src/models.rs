@@ -518,39 +518,43 @@ pub struct TrustlineMetrics {
     pub active_assets: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
-pub struct TrustlineEvent {
-    pub id: i64,
-    pub account_id: String,
-    pub asset_code: String,
-    pub asset_issuer: String,
-    pub event_type: String,
-    pub balance: f64,
-    pub recorded_at: DateTime<Utc>,
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ScoreComponentDetail {
+    pub name: String,
+    pub raw_metric: f64,
+    pub normalized_score: f64,
+    pub weight: f64,
+    pub weighted_score: f64,
+    pub description: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
-pub struct CohortWeekRetention {
-    pub week_number: i32,
-    pub active_accounts: i64,
-    pub retention_rate: f64,
-    pub churn_rate: f64,
+pub struct AnchorHealthScoreExplanation {
+    pub anchor_id: String,
+    pub methodology_version: String,
+    pub composite_score: f64,
+    pub status: String,
+    pub components: Vec<ScoreComponentDetail>,
+    pub methodology_doc_url: String,
+    pub computed_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
-pub struct TrustlineCohortRetention {
-    pub cohort_week: String,
-    pub cohort_size: i64,
-    pub retention: Vec<CohortWeekRetention>,
+pub struct StageLatencyStat {
+    pub stage: String,
+    pub p50_ms: f64,
+    pub p95_ms: f64,
+    pub avg_ms: f64,
+    pub sample_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
-pub struct TrustlineCohortMatrix {
-    pub asset_code: String,
-    pub asset_issuer: String,
-    pub total_tracked_accounts: i64,
-    pub spam_accounts_excluded: i64,
-    pub cohorts: Vec<TrustlineCohortRetention>,
+pub struct AnchorSettlementStagesResponse {
+    pub anchor_id: String,
+    pub total_sample_count: i64,
+    pub stages: Vec<StageLatencyStat>,
+    pub overall_p50_ms: f64,
+    pub overall_p95_ms: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]

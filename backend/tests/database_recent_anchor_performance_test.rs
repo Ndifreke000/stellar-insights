@@ -76,3 +76,63 @@ async fn test_get_recent_anchor_performance_from_payments_without_successful_col
     assert!(metrics.failure_rate.abs() < f64::EPSILON);
     assert!((metrics.success_rate - 100.0).abs() < f64::EPSILON);
 }
+
+#[tokio::test]
+async fn test_anchor_health_scoring_and_stages() {
+    use payraider_backend::models::AnchorMetrics;
+    use payraider_backend::services::anchor_monitor::AnchorMonitor;
+
+    let db = setup_test_db().await;
+
+    // 1. Health scoring model
+    let metrics = AnchorMetrics {
+        success_rate: 99.0,
+        failure_rate: 1.0,
+        reliability_score: 98.0,
+        total_transactions: 1000,
+        successful_transactions: 990,
+        failed_transactions: 10,
+        avg_settlement_time_ms: Some(2500),
+        status: payraider_backend::models::AnchorStatus::Green,
+    };
+
+    let score = AnchorMonitor::compute_health_score("anchor-1", &metrics, true, 1.0);
+    assert_eq!(score.status, "Green");
+    assert!(score.composite_score >= 80.0);
+    assert_eq!(score.components.len(), 5);
+
+    // 2. Stage latency recording and percentile extraction
+    AnchorMonitor::record_stage_latency_for_db(
+        &db,
+        "anchor-1",
+        "tx-sep-1",
+        "SEP-24",
+        Some(3000),
+        Some(1200),
+        Some(14000),
+        "completed",
+    )
+    .await
+    .unwrap();
+
+    AnchorMonitor::record_stage_latency_for_db(
+        &db,
+        "anchor-1",
+        "tx-sep-2",
+        "SEP-24",
+        Some(3500),
+        Some(1500),
+        Some(18000),
+        "completed",
+    )
+    .await
+    .unwrap();
+
+    let stages = AnchorMonitor::get_settlement_stages_for_db(&db, "anchor-1")
+        .await
+        .unwrap();
+
+    assert_eq!(stages.total_sample_count, 2);
+    assert_eq!(stages.stages.len(), 3);
+    assert!(stages.overall_p50_ms > 0.0);
+}

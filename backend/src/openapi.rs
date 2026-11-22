@@ -60,6 +60,10 @@ impl Modify for SecurityAddon {
         crate::api::anchors::update_anchor_metrics,
         crate::api::anchors::get_anchor_assets,
         crate::api::anchors::create_anchor_asset,
+        crate::api::anchors::get_anchor_health_score,
+        crate::api::anchors::get_anchor_settlement_stages,
+        crate::api::anchors::validate_toml_content,
+        crate::api::anchors::validate_toml_domain,
         // Corridors
         crate::api::corridors::list_corridors,
         crate::api::corridors::get_corridor_detail,
@@ -296,6 +300,13 @@ impl Modify for SecurityAddon {
             crate::observability::frontend_metrics::FrontendMetricsSummary,
             crate::observability::frontend_metrics::FrontendMetricSummary,
             crate::observability::frontend_metrics::PageSummary,
+            crate::models::ScoreComponentDetail,
+            crate::models::AnchorHealthScoreExplanation,
+            crate::models::StageLatencyStat,
+            crate::models::AnchorSettlementStagesResponse,
+            crate::services::stellar_toml::TomlDiagnostic,
+            crate::services::stellar_toml::TomlValidationReport,
+            crate::api::anchors::ValidateTomlRequest,
             // Pagination envelope (see crate::pagination)
             crate::pagination::PageMeta,
             crate::pagination::PageLinks,
@@ -369,6 +380,14 @@ pub struct AchievementsApiDoc;
         crate::api::governance::add_comment,
         crate::api::governance::get_comments,
         crate::api::governance::refresh_tally,
+        crate::api::governance::get_reconciliation_discrepancies,
+        crate::api::governance::reconcile_proposal,
+    ),
+    components(
+        schemas(
+            crate::services::governance::GovernanceDiscrepancy,
+            crate::services::governance::ReconciliationReport,
+        )
     ),
     tags((name = "Governance", description = "Governance proposal and voting endpoints"))
 )]

@@ -156,6 +156,19 @@ pub fn routes(
             get(anchors::get_anchor_by_account),
         )
         .route("/anchors/{id}/assets", get(anchors::get_anchor_assets))
+        .route("/anchors/{id}/score", get(anchors::get_anchor_health_score))
+        .route(
+            "/anchors/{id}/settlement-stages",
+            get(anchors::get_anchor_settlement_stages),
+        )
+        .route(
+            "/toml/validate",
+            axum::routing::post(anchors::validate_toml_content),
+        )
+        .route(
+            "/toml/validate/{domain}",
+            get(anchors::validate_toml_domain),
+        )
         .route("/analytics/muxed", get(anchors::get_muxed_analytics))
         .route("/db/slow-queries", get(crate::handlers::slow_queries))
         .route("/db/index-report", get(crate::handlers::index_report))

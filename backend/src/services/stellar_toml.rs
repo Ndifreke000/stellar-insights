@@ -20,6 +20,27 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// Maximum response size (1MB)
 const MAX_RESPONSE_SIZE: usize = 1024 * 1024;
 
+/// Individual validation diagnostic finding (#2818)
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
+pub struct TomlDiagnostic {
+    pub field: String,
+    pub severity: String,
+    pub message: String,
+    pub fix_hint: String,
+}
+
+/// Comprehensive SEP-1 validation report (#2818)
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct TomlValidationReport {
+    pub is_valid: bool,
+    pub error_count: usize,
+    pub warning_count: usize,
+    pub info_count: usize,
+    pub diagnostics: Vec<TomlDiagnostic>,
+    pub checked_at: chrono::DateTime<chrono::Utc>,
+    pub content_size_bytes: usize,
+}
+
 /// Stellar.toml metadata according to SEP-1
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StellarToml {
@@ -682,6 +703,293 @@ impl StellarTomlClient {
         }
         Ok(())
     }
+
+    /// Validate remote stellar.toml by fetching and evaluating HTTP headers & SEP-1 schema (#2818)
+    pub async fn validate_domain_toml(&self, domain: &str) -> Result<TomlValidationReport> {
+        self.validate_domain(domain)?;
+        let url = format!("https://{domain}/.well-known/stellar.toml");
+
+        let response = match self.http_client.get(&url).send().await {
+            Ok(resp) => resp,
+            Err(e) => {
+                return Ok(TomlValidationReport {
+                    is_valid: false,
+                    error_count: 1,
+                    warning_count: 0,
+                    info_count: 0,
+                    diagnostics: vec![TomlDiagnostic {
+                        field: "HTTP_FETCH".to_string(),
+                        severity: "error".to_string(),
+                        message: format!("Failed to reach {url}: {e}"),
+                        fix_hint: "Verify server is running, domain is accessible over HTTPS and DNS is correct".to_string(),
+                    }],
+                    checked_at: chrono::Utc::now(),
+                    content_size_bytes: 0,
+                });
+            }
+        };
+
+        let mut diagnostics = Vec::new();
+
+        // Check CORS header
+        let cors_header = response.headers().get("access-control-allow-origin");
+        let has_wildcard_cors = cors_header.and_then(|v| v.to_str().ok()).map(|s| s.trim()) == Some("*");
+        if !has_wildcard_cors {
+            diagnostics.push(TomlDiagnostic {
+                field: "CORS".to_string(),
+                severity: "error".to_string(),
+                message: "Missing 'Access-Control-Allow-Origin: *' header on stellar.toml".to_string(),
+                fix_hint: "Configure web server to return 'Access-Control-Allow-Origin: *' on /.well-known/stellar.toml".to_string(),
+            });
+        }
+
+        // Check Content-Type header
+        let content_type = response.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("");
+        if !content_type.contains("text/plain") && !content_type.contains("application/toml") {
+            diagnostics.push(TomlDiagnostic {
+                field: "CONTENT_TYPE".to_string(),
+                severity: "warning".to_string(),
+                message: format!("Unexpected Content-Type: '{content_type}'. SEP-1 recommends 'text/plain' or 'application/toml'"),
+                fix_hint: "Set Content-Type header to 'text/plain; charset=utf-8'".to_string(),
+            });
+        }
+
+        let body = response.text().await.unwrap_or_default();
+        let mut report = validate_sep1_content(&body);
+        report.diagnostics.extend(diagnostics);
+        report.error_count = report.diagnostics.iter().filter(|d| d.severity == "error").count();
+        report.warning_count = report.diagnostics.iter().filter(|d| d.severity == "warning").count();
+        report.info_count = report.diagnostics.iter().filter(|d| d.severity == "info").count();
+        report.is_valid = report.error_count == 0;
+
+        Ok(report)
+    }
+}
+
+/// Convenience function to fetch and validate stellar.toml for a domain (#2818)
+pub async fn validate_domain_toml(domain: &str) -> Result<TomlValidationReport> {
+    let client = StellarTomlClient::new(Arc::new(RwLock::new(None)), None)?;
+    client.validate_domain_toml(domain).await
+}
+
+/// Validate SEP-1 string content against schema constraints (#2818)
+pub fn validate_sep1_content(content: &str) -> TomlValidationReport {
+    let mut diagnostics = Vec::new();
+    let size_bytes = content.len();
+
+    // 1. Size constraint: SEP-1 recommends <= 100KB (102,400 bytes)
+    if size_bytes > 102_400 {
+        diagnostics.push(TomlDiagnostic {
+            field: "FILE_SIZE".to_string(),
+            severity: "error".to_string(),
+            message: format!("File size ({} bytes) exceeds the 100KB limit recommended by SEP-1", size_bytes),
+            fix_hint: "Remove unused documentation or truncate large descriptions to stay under 100KB".to_string(),
+        });
+    }
+
+    // 2. Parse as generic toml::Value
+    let parsed: Result<toml::Value, _> = content.parse();
+    let root = match parsed {
+        Ok(val) => val,
+        Err(e) => {
+            diagnostics.push(TomlDiagnostic {
+                field: "SYNTAX".to_string(),
+                severity: "error".to_string(),
+                message: format!("TOML syntax error: {e}"),
+                fix_hint: "Check for unclosed strings, missing quotes, or invalid table headers".to_string(),
+            });
+            let errors = diagnostics.iter().filter(|d| d.severity == "error").count();
+            return TomlValidationReport {
+                is_valid: false,
+                error_count: errors,
+                warning_count: 0,
+                info_count: 0,
+                diagnostics,
+                checked_at: chrono::Utc::now(),
+                content_size_bytes: size_bytes,
+            };
+        }
+    };
+
+    let table = match root.as_table() {
+        Some(t) => t,
+        None => {
+            diagnostics.push(TomlDiagnostic {
+                field: "ROOT".to_string(),
+                severity: "error".to_string(),
+                message: "stellar.toml root must be a key-value table".to_string(),
+                fix_hint: "Ensure root structure contains key-value pairs".to_string(),
+            });
+            return TomlValidationReport {
+                is_valid: false,
+                error_count: 1,
+                warning_count: 0,
+                info_count: 0,
+                diagnostics,
+                checked_at: chrono::Utc::now(),
+                content_size_bytes: size_bytes,
+            };
+        }
+    };
+
+    // 3. Network Passphrase check
+    if let Some(np) = table.get("NETWORK_PASSPHRASE") {
+        if let Some(s) = np.as_str() {
+            if s != "Public Global Stellar Network ; September 2015"
+                && s != "Test SDF Network ; September 2015"
+                && s != "Test SDF Future Network ; October 2022"
+            {
+                diagnostics.push(TomlDiagnostic {
+                    field: "NETWORK_PASSPHRASE".to_string(),
+                    severity: "warning".to_string(),
+                    message: format!("Unrecognized network passphrase: '{s}'"),
+                    fix_hint: "For public network use: 'Public Global Stellar Network ; September 2015'".to_string(),
+                });
+            }
+        } else {
+            diagnostics.push(TomlDiagnostic {
+                field: "NETWORK_PASSPHRASE".to_string(),
+                severity: "error".to_string(),
+                message: "NETWORK_PASSPHRASE must be a string".to_string(),
+                fix_hint: "Format as: NETWORK_PASSPHRASE = \"...\"".to_string(),
+            });
+        }
+    } else {
+        diagnostics.push(TomlDiagnostic {
+            field: "NETWORK_PASSPHRASE".to_string(),
+            severity: "warning".to_string(),
+            message: "Missing NETWORK_PASSPHRASE field in stellar.toml".to_string(),
+            fix_hint: "Add NETWORK_PASSPHRASE = \"Public Global Stellar Network ; September 2015\"".to_string(),
+        });
+    }
+
+    // 4. Signing Key check
+    if let Some(sk) = table.get("SIGNING_KEY") {
+        if let Some(s) = sk.as_str() {
+            if !is_valid_stellar_pubkey(s) {
+                diagnostics.push(TomlDiagnostic {
+                    field: "SIGNING_KEY".to_string(),
+                    severity: "error".to_string(),
+                    message: format!("Invalid SIGNING_KEY: '{s}'. Must be 56 characters starting with 'G'"),
+                    fix_hint: "Provide a valid ed25519 public key starting with 'G'".to_string(),
+                });
+            }
+        } else {
+            diagnostics.push(TomlDiagnostic {
+                field: "SIGNING_KEY".to_string(),
+                severity: "error".to_string(),
+                message: "SIGNING_KEY must be a string".to_string(),
+                fix_hint: "Format as: SIGNING_KEY = \"G...\"".to_string(),
+            });
+        }
+    }
+
+    // 5. Service endpoints HTTPS check
+    for key in &[
+        "TRANSFER_SERVER",
+        "TRANSFER_SERVER_0024",
+        "AUTH_SERVER",
+        "WEB_AUTH_ENDPOINT",
+        "FEDERATION_SERVER",
+        "KYC_SERVER",
+    ] {
+        if let Some(val) = table.get(*key) {
+            if let Some(url_str) = val.as_str() {
+                if !url_str.starts_with("https://") {
+                    diagnostics.push(TomlDiagnostic {
+                        field: (*key).to_string(),
+                        severity: "error".to_string(),
+                        message: format!("{key} URL '{url_str}' must use HTTPS protocol"),
+                        fix_hint: "Change URL scheme to https://".to_string(),
+                    });
+                }
+            } else {
+                diagnostics.push(TomlDiagnostic {
+                    field: (*key).to_string(),
+                    severity: "error".to_string(),
+                    message: format!("{key} must be a valid URL string"),
+                    fix_hint: format!("Set {key} = \"https://...\""),
+                });
+            }
+        }
+    }
+
+    // 6. Currencies table array check
+    if let Some(currencies) = table.get("CURRENCIES") {
+        if let Some(arr) = currencies.as_array() {
+            for (idx, curr) in arr.iter().enumerate() {
+                if let Some(ct) = curr.as_table() {
+                    let code = ct.get("code").and_then(|c| c.as_str());
+                    let issuer = ct.get("issuer").and_then(|i| i.as_str());
+
+                    if code.is_none() {
+                        diagnostics.push(TomlDiagnostic {
+                            field: format!("CURRENCIES[{idx}].code"),
+                            severity: "error".to_string(),
+                            message: "Currency entry missing required 'code' field".to_string(),
+                            fix_hint: "Add code = \"USDC\"".to_string(),
+                        });
+                    }
+
+                    if let Some(iss) = issuer {
+                        if !is_valid_stellar_pubkey(iss) {
+                            diagnostics.push(TomlDiagnostic {
+                                field: format!("CURRENCIES[{idx}].issuer"),
+                                severity: "error".to_string(),
+                                message: format!("Invalid issuer public key: '{iss}'"),
+                                fix_hint: "Issuer must be a valid 56-character Stellar account ID starting with 'G'".to_string(),
+                            });
+                        }
+                    }
+
+                    if let Some(dec) = ct.get("display_decimals") {
+                        if let Some(d) = dec.as_integer() {
+                            if !(0..=7).contains(&d) {
+                                diagnostics.push(TomlDiagnostic {
+                                    field: format!("CURRENCIES[{idx}].display_decimals"),
+                                    severity: "warning".to_string(),
+                                    message: format!("display_decimals ({d}) is outside common range 0-7"),
+                                    fix_hint: "Stellar assets typically support up to 7 decimal places".to_string(),
+                                });
+                            }
+                        } else {
+                            diagnostics.push(TomlDiagnostic {
+                                field: format!("CURRENCIES[{idx}].display_decimals"),
+                                severity: "error".to_string(),
+                                message: "display_decimals must be an integer".to_string(),
+                                fix_hint: "Format as integer: display_decimals = 2".to_string(),
+                            });
+                        }
+                    }
+                } else {
+                    diagnostics.push(TomlDiagnostic {
+                        field: format!("CURRENCIES[{idx}]"),
+                        severity: "error".to_string(),
+                        message: "Each [[CURRENCIES]] entry must be a table".to_string(),
+                        fix_hint: "Define with [[CURRENCIES]]".to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    let error_count = diagnostics.iter().filter(|d| d.severity == "error").count();
+    let warning_count = diagnostics.iter().filter(|d| d.severity == "warning").count();
+    let info_count = diagnostics.iter().filter(|d| d.severity == "info").count();
+
+    TomlValidationReport {
+        is_valid: error_count == 0,
+        error_count,
+        warning_count,
+        info_count,
+        diagnostics,
+        checked_at: chrono::Utc::now(),
+        content_size_bytes: size_bytes,
+    }
+}
+
+fn is_valid_stellar_pubkey(key: &str) -> bool {
+    key.len() == 56 && key.starts_with('G') && key.chars().all(|c| c.is_ascii_alphanumeric())
 }
 
 #[cfg(test)]
