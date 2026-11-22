@@ -1,4 +1,5 @@
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
@@ -17,6 +18,29 @@ pub use crate::jobs::config::{
     JobConfigResponse, ScheduleRunRequest, ScheduleRunResponse, UpdateJobConfigRequest,
 };
 pub use crate::jobs::persistence::{CatchUpPolicy, JobPersistence};
+
+/// Abstraction over wall-clock and monotonic time so scheduling logic can be
+/// driven deterministically in tests (e.g. with tokio paused time).
+pub trait Clock: Send + Sync {
+    /// Current wall-clock time in UTC.
+    fn now(&self) -> DateTime<Utc>;
+    /// Monotonic instant used for measuring elapsed durations.
+    fn instant(&self) -> std::time::Instant;
+}
+
+/// Production clock backed by the system time.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct SystemClock;
+
+impl Clock for SystemClock {
+    fn now(&self) -> DateTime<Utc> {
+        Utc::now()
+    }
+
+    fn instant(&self) -> std::time::Instant {
+        std::time::Instant::now()
+    }
+}
 
 #[derive(Clone)]
 pub struct JobConfig {
@@ -52,6 +76,7 @@ pub struct JobScheduler {
     handles: Vec<JoinHandle<()>>,
     pool: Option<Arc<Database>>,
     persistence: Option<Arc<JobPersistence>>,
+    clock: Arc<dyn Clock>,
 }
 
 impl Default for JobScheduler {
@@ -62,11 +87,12 @@ impl Default for JobScheduler {
 
 impl JobScheduler {
     #[must_use]
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             handles: Vec::new(),
             pool: None,
             persistence: None,
+            clock: Arc::new(SystemClock),
         }
     }
 
@@ -76,7 +102,15 @@ impl JobScheduler {
             handles: Vec::new(),
             pool: Some(db),
             persistence: Some(persistence),
+            clock: Arc::new(SystemClock),
         }
+    }
+
+    /// Override the clock used by the scheduler (primarily for tests).
+    #[must_use]
+    pub fn with_clock(mut self, clock: Arc<dyn Clock>) -> Self {
+        self.clock = clock;
+        self
     }
 
     pub fn add_job<F>(&mut self, config: JobConfig, job_fn: F)
@@ -97,6 +131,7 @@ impl JobScheduler {
         );
 
         let persistence = self.persistence.clone();
+        let clock = Arc::clone(&self.clock);
         let handle = tokio::spawn(async move {
             let lock = DistributedLock::shared().await;
             let interval = Duration::from_secs(config.interval_seconds);
@@ -106,7 +141,7 @@ impl JobScheduler {
             loop {
                 // Check for missed runs based on catch-up policy
                 if let Some(ref persistence) = persistence {
-                    match persistence.find_missed_runs(&job_name, chrono::Utc::now()).await {
+                    match persistence.find_missed_runs(&job_name, clock.now()).await {
                         Ok(missed) => {
                             for scheduled_for in missed {
                                 match persistence.get_or_create_run(&job_name, scheduled_for).await {
@@ -139,7 +174,7 @@ impl JobScheduler {
 
                 // Execute job with metrics tracking
                 let _metrics = JobMetricsCollector::new(&job_name);
-                let started = std::time::Instant::now();
+                let started = clock.instant();
                 let job = job_fn();
                 tokio::pin!(job);
                 let mut renew = tokio::time::interval((lock_ttl / 3).max(Duration::from_secs(1)));
@@ -225,29 +260,11 @@ impl JobScheduler {
         scheduler.add_job(config, move || {
             let price_feed = Arc::clone(&price_feed_clone);
             Box::pin(async move {
-                price_feed.warm_cache().await?;
-                Ok(())
-            })
-        });
-
-        // Cache cleanup job
-        let config = JobConfig::from_env("cache-cleanup", 3600);
-        let cache_clone = Arc::clone(&cache);
-        scheduler.add_job(config, move || {
-            let cache = Arc::clone(&cache_clone);
-            Box::pin(async move {
-                cache.cleanup_expired()?;
+                price_feed.refresh().await?;
                 Ok(())
             })
         });
 
         scheduler
-    }
-
-    pub fn shutdown(self) {
-        info!("Shutting down job scheduler");
-        for handle in self.handles {
-            handle.abort();
-        }
     }
 }
