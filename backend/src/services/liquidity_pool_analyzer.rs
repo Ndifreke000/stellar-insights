@@ -7,7 +7,9 @@ use std::str::FromStr;
 use std::sync::Arc;
 use tracing::info;
 
-use crate::models::{LiquidityPool, LiquidityPoolSnapshot, LiquidityPoolStats};
+use crate::models::{
+    LiquidityPool, LiquidityPoolSnapshot, LiquidityPoolStats, LpReturnsAnalytics, LpSnapshotReturn,
+};
 use crate::rpc::StellarRpcClientTrait;
 
 pub struct LiquidityPoolAnalyzer {
@@ -239,6 +241,103 @@ impl LiquidityPoolAnalyzer {
         let snapshots = self.get_pool_snapshots(pool_id, 100).await?;
 
         Ok((pool, snapshots))
+    }
+
+    /// Compute detailed LP return analytics (fee APR, IL, and net APR) for a pool (#2820).
+    pub async fn get_lp_returns_analytics(&self, pool_id: &str) -> Result<LpReturnsAnalytics> {
+        let (pool, snapshots) = self.get_pool_detail(pool_id).await?;
+
+        let fee_income_24h_usd = pool.fees_earned_24h_usd;
+        let fee_apr = pool.apy;
+        let il_pct = pool.impermanent_loss_pct;
+        let net_apr = fee_apr - il_pct;
+
+        // Earliest reserves for price ratio comparison
+        let (initial_reserve_a, initial_reserve_b) = if let Some(earliest) = snapshots.last() {
+            (earliest.reserve_a_amount, earliest.reserve_b_amount)
+        } else {
+            (pool.reserve_a_amount, pool.reserve_b_amount)
+        };
+
+        let initial_price_ratio = if initial_reserve_a > 0.0 {
+            initial_reserve_b / initial_reserve_a
+        } else {
+            1.0
+        };
+
+        let current_price_ratio = if pool.reserve_a_amount > 0.0 {
+            pool.reserve_b_amount / pool.reserve_a_amount
+        } else {
+            1.0
+        };
+
+        // Estimate 7d and 30d fees from historical snapshots if available
+        let mut fee_income_7d_usd = 0.0;
+        let mut fee_income_30d_usd = 0.0;
+        let now = Utc::now();
+
+        for s in &snapshots {
+            let days_ago = (now - s.snapshot_at).num_days();
+            if days_ago <= 7 {
+                fee_income_7d_usd += s.fees_usd;
+            }
+            if days_ago <= 30 {
+                fee_income_30d_usd += s.fees_usd;
+            }
+        }
+
+        if fee_income_7d_usd == 0.0 {
+            fee_income_7d_usd = fee_income_24h_usd * 7.0;
+        }
+        if fee_income_30d_usd == 0.0 {
+            fee_income_30d_usd = fee_income_24h_usd * 30.0;
+        }
+
+        // HODL value vs LP value: LP value / (1 - IL/100)
+        let pool_value_usd = pool.total_value_usd;
+        let hodl_factor = if il_pct < 99.0 {
+            1.0 - (il_pct / 100.0)
+        } else {
+            0.01
+        };
+        let hodl_value_usd = if hodl_factor > 0.0 {
+            pool_value_usd / hodl_factor
+        } else {
+            pool_value_usd
+        };
+
+        // Historical snapshot returns
+        let mut cumulative_fees = 0.0;
+        let mut historical_returns: Vec<LpSnapshotReturn> = Vec::new();
+
+        // Traverse chronological (reverse order from desc)
+        for s in snapshots.iter().rev() {
+            cumulative_fees += s.fees_usd;
+            let snap_net_apr = s.apy - s.impermanent_loss_pct;
+            historical_returns.push(LpSnapshotReturn {
+                snapshot_at: s.snapshot_at,
+                fee_apr: s.apy,
+                impermanent_loss_pct: s.impermanent_loss_pct,
+                net_apr: snap_net_apr,
+                cumulative_fees_usd: cumulative_fees,
+            });
+        }
+
+        Ok(LpReturnsAnalytics {
+            pool_id: pool.pool_id,
+            fee_apr,
+            impermanent_loss_pct: il_pct,
+            net_apr,
+            fee_income_24h_usd,
+            fee_income_7d_usd,
+            fee_income_30d_usd,
+            price_source: "horizon_dex_reserves".to_string(),
+            initial_price_ratio,
+            current_price_ratio,
+            hodl_value_usd,
+            pool_value_usd,
+            historical_returns,
+        })
     }
 
     /// Get pool snapshots for historical charts

@@ -29,6 +29,27 @@ export interface TrustlineMetrics {
   active_assets: number;
 }
 
+export interface CohortWeekRetention {
+  week_number: number;
+  active_accounts: number;
+  retention_rate: number;
+  churn_rate: number;
+}
+
+export interface TrustlineCohortRetention {
+  cohort_week: string;
+  cohort_size: number;
+  retention: CohortWeekRetention[];
+}
+
+export interface TrustlineCohortMatrix {
+  asset_code: string;
+  asset_issuer: string;
+  total_tracked_accounts: number;
+  spam_accounts_excluded: number;
+  cohorts: TrustlineCohortRetention[];
+}
+
 export async function fetchTrustlineStats(): Promise<TrustlineMetrics> {
   const url = `${API_BASE_URL}/trustlines/stats`;
   try {
@@ -88,5 +109,28 @@ export async function fetchTrustlineHistory(
   } catch (err) {
     logger.error("Error fetching trustline history:", err);
     return [];
+  }
+}
+
+export async function fetchTrustlineCohorts(
+  assetCode: string,
+  assetIssuer: string,
+  weeks: number = 12,
+): Promise<TrustlineCohortMatrix | null> {
+  const url = `${API_BASE_URL}/trustlines/${encodeURIComponent(
+    assetCode,
+  )}/${encodeURIComponent(assetIssuer)}/cohorts?weeks=${weeks}`;
+  try {
+    const res = await fetch(url, {
+      next: { revalidate: 300 },
+    });
+    if (!res.ok) {
+      if (res.status === 404) return null;
+      throw new Error(`Failed to fetch trustline cohorts: ${res.statusText}`);
+    }
+    return res.json();
+  } catch (err) {
+    logger.error("Error fetching trustline cohorts:", err);
+    return null;
   }
 }

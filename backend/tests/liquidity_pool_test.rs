@@ -184,3 +184,26 @@ fn test_impermanent_loss_computation() {
     let il = LiquidityPoolAnalyzer::compute_impermanent_loss(0.0, 100.0, 100.0, 100.0);
     assert_eq!(il, 0.0);
 }
+
+#[tokio::test]
+async fn test_lp_returns_analytics_and_net_apr() {
+    let pool = setup_liquidity_pool_test_db().await;
+    let rpc_client = Arc::new(StellarRpcClient::new_with_defaults(true));
+    let analyzer = LiquidityPoolAnalyzer::new(pool.clone(), rpc_client);
+
+    // Sync pools and take snapshots
+    analyzer.sync_pools().await.unwrap();
+    analyzer.take_snapshots().await.unwrap();
+
+    let pools = analyzer.get_all_pools().await.unwrap();
+    let pool_id = &pools[0].pool_id;
+
+    let analytics = analyzer.get_lp_returns_analytics(pool_id).await.unwrap();
+    assert_eq!(analytics.pool_id, *pool_id);
+    assert_eq!(analytics.price_source, "horizon_dex_reserves");
+    // Net APR = fee_apr - impermanent_loss_pct
+    assert!((analytics.net_apr - (analytics.fee_apr - analytics.impermanent_loss_pct)).abs() < 0.001);
+    assert!(analytics.fee_income_24h_usd >= 0.0);
+    assert!(analytics.fee_income_7d_usd >= analytics.fee_income_24h_usd);
+    assert!(analytics.fee_income_30d_usd >= analytics.fee_income_7d_usd);
+}

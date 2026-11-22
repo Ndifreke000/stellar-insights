@@ -127,6 +127,7 @@ impl Modify for SecurityAddon {
         crate::api::liquidity_pools::get_pool_rankings,
         crate::api::liquidity_pools::get_pool_detail,
         crate::api::liquidity_pools::get_pool_snapshots,
+        crate::api::liquidity_pools::get_lp_analytics,
         // Metrics
         crate::api::metrics::metrics_overview,
         // Network
@@ -157,6 +158,7 @@ impl Modify for SecurityAddon {
         crate::api::trustlines::get_trustline_metrics,
         crate::api::trustlines::get_trustline_rankings,
         crate::api::trustlines::get_trustline_history,
+        crate::api::trustlines::get_trustline_cohorts,
         // Webhooks
         crate::api::webhooks::register_webhook,
         crate::api::webhooks::list_webhooks,
@@ -222,6 +224,10 @@ impl Modify for SecurityAddon {
         crate::api::verification_rewards::get_leaderboard,
         crate::api::verification_rewards::get_user_verifications,
         crate::api::verification_rewards::get_public_user_stats,
+        crate::api::verification_rewards::get_review_queue,
+        crate::api::verification_rewards::approve_review,
+        crate::api::verification_rewards::reject_review,
+        crate::api::verification_rewards::get_cluster_info,
         // Snapshots
         crate::api::snapshots::generate_snapshot,
         crate::api::snapshots::contract_health_check,
@@ -267,6 +273,13 @@ impl Modify for SecurityAddon {
             crate::api::snapshots::SubmissionInfo,
             crate::api::snapshots::GenerateSnapshotRequest,
             crate::api::snapshots::ContractHealthResponse,
+            crate::models::TrustlineCohortMatrix,
+            crate::models::TrustlineCohortRetention,
+            crate::models::CohortWeekRetention,
+            crate::models::LpReturnsAnalytics,
+            crate::models::LpSnapshotReturn,
+            crate::services::verification_rewards::ReviewQueueItem,
+            crate::services::verification_rewards::ClusterInfo,
             crate::snapshot::verify::VerificationReport,
             crate::snapshot::verify::VerificationStatus,
             crate::snapshot::verify::VerificationChecks,

@@ -400,6 +400,32 @@ pub struct LiquidityPoolStats {
     pub avg_impermanent_loss: f64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct LpSnapshotReturn {
+    pub snapshot_at: DateTime<Utc>,
+    pub fee_apr: f64,
+    pub impermanent_loss_pct: f64,
+    pub net_apr: f64,
+    pub cumulative_fees_usd: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct LpReturnsAnalytics {
+    pub pool_id: String,
+    pub fee_apr: f64,
+    pub impermanent_loss_pct: f64,
+    pub net_apr: f64,
+    pub fee_income_24h_usd: f64,
+    pub fee_income_7d_usd: f64,
+    pub fee_income_30d_usd: f64,
+    pub price_source: String,
+    pub initial_price_ratio: f64,
+    pub current_price_ratio: f64,
+    pub hodl_value_usd: f64,
+    pub pool_value_usd: f64,
+    pub historical_returns: Vec<LpSnapshotReturn>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MuxedAccountAnalytics {
     #[serde(skip_serializing_if = "Option::is_none")]
