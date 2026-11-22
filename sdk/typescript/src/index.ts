@@ -153,6 +153,46 @@ export { ApiClient, BatchApiClient, ApiClientError };
 export { closeAllConnections };
 export type { EventHandler } from "./websocket-manager.js";
 
+// Typed realtime channel map (issue #2885). Subscribers get typed payloads
+// per channel; the map mirrors the protocol schema used by the WS feed.
+export interface RealtimeChannelMap {
+  corridor: {
+    corridor_id: string;
+    source_asset: string;
+    destination_asset: string;
+    rate: number;
+    seq: number;
+  };
+  price: {
+    asset: string;
+    price_usd: number;
+    seq: number;
+  };
+  alert: {
+    alert_id: string;
+    severity: "info" | "warning" | "critical";
+    message: string;
+    seq: number;
+  };
+  transaction: {
+    tx_hash: string;
+    status: "pending" | "success" | "failed";
+    seq: number;
+  };
+}
+
+export type RealtimeChannel = keyof RealtimeChannelMap;
+
+export type RealtimeMessage<C extends RealtimeChannel = RealtimeChannel> = {
+  channel: C;
+  seq: number;
+  data: RealtimeChannelMap[C];
+};
+
+export type TypedEventHandler<C extends RealtimeChannel = RealtimeChannel> = (
+  message: RealtimeMessage<C>,
+) => void;
+
 export type * from "./types.js";
 export type * from "./api-client.js";
 export type * from "./types/sdk_unit_tests.js";

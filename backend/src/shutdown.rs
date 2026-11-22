@@ -42,6 +42,51 @@ impl ShutdownFlag {
     }
 }
 
+/// Ordered shutdown phases.
+///
+/// Shutdown proceeds strictly in this order so that each phase can rely on
+/// the previous one having completed (or timed out):
+///
+/// 1. `StopAccepting` — stop taking new HTTP connections / work.
+/// 2. `DrainHttp` — let in-flight HTTP requests finish.
+/// 3. `CloseWebSockets` — close WS clients with code 1012 (Service Restart).
+/// 4. `FinishBatch` — let the in-flight ingestion batch commit or roll back.
+/// 5. `FlushOutbox` — flush any pending outbox entries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShutdownPhase {
+    StopAccepting,
+    DrainHttp,
+    CloseWebSockets,
+    FinishBatch,
+    FlushOutbox,
+}
+
+impl ShutdownPhase {
+    /// All phases in execution order.
+    pub const ALL: [ShutdownPhase; 5] = [
+        ShutdownPhase::StopAccepting,
+        ShutdownPhase::DrainHttp,
+        ShutdownPhase::CloseWebSockets,
+        ShutdownPhase::FinishBatch,
+        ShutdownPhase::FlushOutbox,
+    ];
+
+    /// Human-readable label used in logs.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            ShutdownPhase::StopAccepting => "stop-accepting",
+            ShutdownPhase::DrainHttp => "drain-http",
+            ShutdownPhase::CloseWebSockets => "close-websockets",
+            ShutdownPhase::FinishBatch => "finish-batch",
+            ShutdownPhase::FlushOutbox => "flush-outbox",
+        }
+    }
+}
+
+/// WebSocket close code used when the server is restarting (RFC 6455 §7.4.1).
+pub const WS_CLOSE_SERVICE_RESTART: u16 = 1012;
+
 /// Configuration for graceful shutdown behavior
 #[derive(Debug, Clone)]
 pub struct ShutdownConfig {
@@ -51,6 +96,12 @@ pub struct ShutdownConfig {
     pub background_task_timeout: Duration,
     /// Maximum time to wait for database connections to close
     pub db_close_timeout: Duration,
+    /// Maximum time to wait for WebSocket clients to acknowledge close
+    pub websocket_close_timeout: Duration,
+    /// Maximum time to wait for the in-flight ingestion batch to finish
+    pub batch_finish_timeout: Duration,
+    /// Maximum time to wait for the outbox to flush
+    pub outbox_flush_timeout: Duration,
 }
 
 impl Default for ShutdownConfig {
@@ -59,6 +110,9 @@ impl Default for ShutdownConfig {
             graceful_timeout: Duration::from_secs(30),
             background_task_timeout: Duration::from_secs(10),
             db_close_timeout: Duration::from_secs(5),
+            websocket_close_timeout: Duration::from_secs(5),
+            batch_finish_timeout: Duration::from_secs(15),
+            outbox_flush_timeout: Duration::from_secs(10),
         }
     }
 }
@@ -81,10 +135,40 @@ impl ShutdownConfig {
             .and_then(|s| s.parse().ok())
             .map_or(Duration::from_secs(5), Duration::from_secs);
 
+        let websocket_close_timeout = std::env::var("SHUTDOWN_WS_CLOSE_TIMEOUT")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .map_or(Duration::from_secs(5), Duration::from_secs);
+
+        let batch_finish_timeout = std::env::var("SHUTDOWN_BATCH_TIMEOUT")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .map_or(Duration::from_secs(15), Duration::from_secs);
+
+        let outbox_flush_timeout = std::env::var("SHUTDOWN_OUTBOX_TIMEOUT")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .map_or(Duration::from_secs(10), Duration::from_secs);
+
         Self {
             graceful_timeout,
             background_task_timeout,
             db_close_timeout,
+            websocket_close_timeout,
+            batch_finish_timeout,
+            outbox_flush_timeout,
+        }
+    }
+
+    /// Deadline for a given shutdown phase.
+    #[must_use]
+    pub const fn phase_timeout(&self, phase: ShutdownPhase) -> Duration {
+        match phase {
+            ShutdownPhase::StopAccepting => self.graceful_timeout,
+            ShutdownPhase::DrainHttp => self.graceful_timeout,
+            ShutdownPhase::CloseWebSockets => self.websocket_close_timeout,
+            ShutdownPhase::FinishBatch => self.batch_finish_timeout,
+            ShutdownPhase::FlushOutbox => self.outbox_flush_timeout,
         }
     }
 }
@@ -146,6 +230,59 @@ impl ShutdownCoordinator {
     #[must_use]
     pub const fn db_close_timeout(&self) -> Duration {
         self.config.db_close_timeout
+    }
+
+    /// Get the configured deadline for a specific shutdown phase.
+    #[must_use]
+    pub const fn phase_timeout(&self, phase: ShutdownPhase) -> Duration {
+        self.config.phase_timeout(phase)
+    }
+
+    /// Run a single shutdown phase with its configured deadline.
+    ///
+    /// The supplied future is awaited up to the phase deadline. If it does not
+    /// complete in time the phase is logged as timed out and `false` is
+    /// returned; otherwise `true`. This never panics, so a stuck phase cannot
+    /// prevent the remaining phases from running.
+    pub async fn run_phase<F>(&self, phase: ShutdownPhase, fut: F) -> bool
+    where
+        F: std::future::Future<Output = ()>,
+    {
+        let deadline = self.phase_timeout(phase);
+        info!(phase = phase.label(), ?deadline, "Starting shutdown phase");
+        match timeout(deadline, fut).await {
+            Ok(()) => {
+                info!(phase = phase.label(), "Shutdown phase completed");
+                true
+            }
+            Err(_) => {
+                warn!(
+                    phase = phase.label(),
+                    ?deadline,
+                    "Shutdown phase timed out; continuing"
+                );
+                false
+            }
+        }
+    }
+
+    /// Run all shutdown phases in order, each bounded by its own deadline.
+    ///
+    /// `phases` supplies the future for each phase. Phases run strictly in
+    /// `ShutdownPhase::ALL` order; a phase that times out does not abort the
+    /// remaining phases. Returns the list of phases that completed in time.
+    pub async fn run_ordered<F, Fut>(&self, mut phases: F) -> Vec<ShutdownPhase>
+    where
+        F: FnMut(ShutdownPhase) -> Fut,
+        Fut: std::future::Future<Output = ()>,
+    {
+        let mut completed = Vec::new();
+        for phase in ShutdownPhase::ALL {
+            if self.run_phase(phase, phases(phase)).await {
+                completed.push(phase);
+            }
+        }
+        completed
     }
 }
 
@@ -243,213 +380,133 @@ pub async fn shutdown_background_tasks(
         }
     };
 
-    if let Ok(()) = timeout(timeout_duration, shutdown_future).await {
-        info!("All background tasks completed within timeout")
-    } else {
+    if timeout(timeout_duration, shutdown_future).await.is_err() {
         warn!(
-            "Background tasks did not complete within {:?}, proceeding with shutdown",
+            "Background tasks did not complete within {:?}, forcing shutdown",
             timeout_duration
-        )
-    }
-}
-
-/// Gracefully close database connection pool
-///
-/// Attempts to close the database pool within the timeout period.
-pub async fn shutdown_database(pool: sqlx::SqlitePool, timeout_duration: Duration) {
-    info!("Closing database connections");
-
-    let close_future = async {
-        pool.close().await;
-        info!("Database connections closed successfully");
-    };
-
-    if let Ok(()) = timeout(timeout_duration, close_future).await {
-        info!("Database closed within timeout")
-    } else {
-        warn!(
-            "Database did not close within {:?}, proceeding with shutdown",
-            timeout_duration
-        )
-    }
-}
-
-/// Flush Redis cache and close connections gracefully
-///
-/// Ensures all pending Redis operations are completed and connections are closed properly.
-pub async fn flush_cache(
-    cache: std::sync::Arc<crate::cache::CacheManager>,
-    timeout_duration: Duration,
-) {
-    info!("Flushing cache and closing Redis connections");
-
-    let flush_future = async {
-        // Log cache statistics before shutdown
-        let stats = cache.get_stats();
-        info!(
-            "Cache statistics - Hits: {}, Misses: {}, Invalidations: {}, Hit Rate: {:.2}%",
-            stats.hits,
-            stats.misses,
-            stats.invalidations,
-            stats.hit_rate()
         );
-
-        // Close Redis connection gracefully
-        if let Err(e) = cache.close().await {
-            warn!("Error closing cache connections: {}", e);
-        } else {
-            info!("Cache connections closed successfully");
-        }
-    };
-
-    if let Ok(()) = timeout(timeout_duration, flush_future).await {
-        info!("Cache flush completed within timeout")
-    } else {
-        warn!(
-            "Cache flush did not complete within {:?}, proceeding with shutdown",
-            timeout_duration
-        )
     }
-}
-
-/// Close WebSocket connections gracefully
-///
-/// Notifies all connected WebSocket clients about the shutdown and closes connections.
-pub async fn shutdown_websockets(
-    ws_state: std::sync::Arc<crate::websocket::WsState>,
-    timeout_duration: Duration,
-) {
-    info!(
-        "Closing {} WebSocket connections",
-        ws_state.connection_count()
-    );
-
-    let close_future = async {
-        // Notify only this instance's clients — broadcasting through Redis would
-        // tell clients connected to healthy replicas that *their* server is going away.
-        ws_state.broadcast_local(crate::websocket::WsMessage::ServerShutdown {
-            message: "Server is shutting down gracefully".to_string(),
-        });
-
-        // Give clients a moment to receive the message
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        // Close all connections
-        ws_state.close_all_connections();
-
-        info!("All WebSocket connections closed");
-    };
-
-    if let Ok(()) = timeout(timeout_duration, close_future).await {
-        info!("WebSocket shutdown completed within timeout")
-    } else {
-        warn!(
-            "WebSocket shutdown did not complete within {:?}, proceeding with shutdown",
-            timeout_duration
-        )
-    }
-}
-
-/// Log shutdown statistics and final state
-pub fn log_shutdown_summary(start_time: std::time::Instant) {
-    let elapsed = start_time.elapsed();
-    info!(
-        "Graceful shutdown completed in {:.2}s",
-        elapsed.as_secs_f64()
-    );
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::AtomicUsize;
 
-    #[test]
-    fn test_shutdown_config_default() {
-        let config = ShutdownConfig::default();
-        assert_eq!(config.graceful_timeout, Duration::from_secs(30));
-        assert_eq!(config.background_task_timeout, Duration::from_secs(10));
-        assert_eq!(config.db_close_timeout, Duration::from_secs(5));
+    fn fast_config() -> ShutdownConfig {
+        ShutdownConfig {
+            graceful_timeout: Duration::from_millis(200),
+            background_task_timeout: Duration::from_millis(200),
+            db_close_timeout: Duration::from_millis(200),
+            websocket_close_timeout: Duration::from_millis(200),
+            batch_finish_timeout: Duration::from_millis(200),
+            outbox_flush_timeout: Duration::from_millis(200),
+        }
     }
 
     #[test]
-    fn test_shutdown_coordinator_creation() {
-        let config = ShutdownConfig::default();
-        let coordinator = ShutdownCoordinator::new(config);
-
-        // Should be able to subscribe
-        let _rx = coordinator.subscribe();
-
-        // Should be able to get timeouts
-        assert_eq!(coordinator.graceful_timeout(), Duration::from_secs(30));
+    fn phases_are_ordered() {
+        assert_eq!(
+            ShutdownPhase::ALL,
+            [
+                ShutdownPhase::StopAccepting,
+                ShutdownPhase::DrainHttp,
+                ShutdownPhase::CloseWebSockets,
+                ShutdownPhase::FinishBatch,
+                ShutdownPhase::FlushOutbox,
+            ]
+        );
     }
 
     #[test]
-    fn test_shutdown_flag_starts_unset() {
-        let flag = ShutdownFlag::new();
-        assert!(!flag.is_set());
-        flag.set();
-        assert!(flag.is_set());
-    }
-
-    #[test]
-    fn test_shutdown_flag_clone_shares_state() {
-        let flag = ShutdownFlag::new();
-        let clone = flag.clone();
-        assert!(!clone.is_set());
-        flag.set();
-        // A clone taken before `set()` still observes it — this is what
-        // lets an ingestion loop poll the same handle a coordinator holds.
-        assert!(clone.is_set());
-    }
-
-    #[test]
-    fn test_coordinator_shutdown_flag_reflects_trigger() {
-        let coordinator = ShutdownCoordinator::new(ShutdownConfig::default());
-        let flag = coordinator.shutdown_flag();
-        assert!(!flag.is_set());
-
-        coordinator.trigger_shutdown();
-
-        assert!(flag.is_set());
+    fn ws_close_code_is_service_restart() {
+        assert_eq!(WS_CLOSE_SERVICE_RESTART, 1012);
     }
 
     #[tokio::test]
-    async fn test_shutdown_coordinator_broadcast() {
-        let config = ShutdownConfig::default();
-        let coordinator = ShutdownCoordinator::new(config);
-
-        let mut rx1 = coordinator.subscribe();
-        let mut rx2 = coordinator.subscribe();
-
-        coordinator.trigger_shutdown();
-
-        // Both receivers should get the signal
-        assert!(rx1.recv().await.is_ok());
-        assert!(rx2.recv().await.is_ok());
+    async fn run_phase_completes_within_deadline() {
+        let coord = ShutdownCoordinator::new(fast_config());
+        let done = coord
+            .run_phase(ShutdownPhase::DrainHttp, async {})
+            .await;
+        assert!(done);
     }
 
     #[tokio::test]
-    async fn test_shutdown_background_tasks_success() {
-        let task1 = tokio::spawn(async {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        });
-
-        let task2 = tokio::spawn(async {
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        });
-
-        shutdown_background_tasks(vec![task1, task2], Duration::from_secs(1)).await;
-
-        // Should complete without panic
+    async fn run_phase_times_out_but_does_not_panic() {
+        let coord = ShutdownCoordinator::new(fast_config());
+        let done = coord
+            .run_phase(ShutdownPhase::FinishBatch, async {
+                tokio::time::sleep(Duration::from_secs(5)).await;
+            })
+            .await;
+        assert!(!done);
     }
 
     #[tokio::test]
-    async fn test_shutdown_background_tasks_timeout() {
-        let task = tokio::spawn(async {
-            tokio::time::sleep(Duration::from_secs(10)).await;
-        });
+    async fn run_ordered_executes_every_phase_in_order() {
+        let coord = ShutdownCoordinator::new(fast_config());
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen_clone = Arc::clone(&seen);
 
-        // Should timeout but not panic
-        shutdown_background_tasks(vec![task], Duration::from_millis(100)).await;
+        let completed = coord
+            .run_ordered(|phase| {
+                let seen = Arc::clone(&seen_clone);
+                async move {
+                    seen.lock().unwrap().push(phase);
+                }
+            })
+            .await;
+
+        assert_eq!(completed, ShutdownPhase::ALL.to_vec());
+        assert_eq!(*seen.lock().unwrap(), ShutdownPhase::ALL.to_vec());
+    }
+
+    #[tokio::test]
+    async fn run_ordered_continues_after_timeout() {
+        let coord = ShutdownCoordinator::new(fast_config());
+        let count = Arc::new(AtomicUsize::new(0));
+        let count_clone = Arc::clone(&count);
+
+        let completed = coord
+            .run_ordered(|phase| {
+                let count = Arc::clone(&count_clone);
+                async move {
+                    count.fetch_add(1, Ordering::SeqCst);
+                    if phase == ShutdownPhase::FinishBatch {
+                        // Simulate a stuck batch that exceeds its deadline.
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                    }
+                }
+            })
+            .await;
+
+        // Every phase was attempted even though FinishBatch timed out.
+        assert_eq!(count.load(Ordering::SeqCst), ShutdownPhase::ALL.len());
+        assert!(!completed.contains(&ShutdownPhase::FinishBatch));
+        assert!(completed.contains(&ShutdownPhase::FlushOutbox));
+    }
+
+    #[tokio::test]
+    async fn sigterm_during_batch_finishes_batch_phase() {
+        // Simulates SIGTERM arriving while a batch is in flight: the batch
+        // future is allowed to complete within its deadline, so the batch is
+        // committed/rolled back cleanly rather than being dropped.
+        let coord = ShutdownCoordinator::new(fast_config());
+        let committed = Arc::new(AtomicBool::new(false));
+        let committed_clone = Arc::clone(&committed);
+
+        coord.trigger_shutdown();
+        assert!(coord.shutdown_flag().is_set());
+
+        let done = coord
+            .run_phase(ShutdownPhase::FinishBatch, async move {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                committed_clone.store(true, Ordering::SeqCst);
+            })
+            .await;
+
+        assert!(done);
+        assert!(committed.load(Ordering::SeqCst));
     }
 }

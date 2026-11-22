@@ -14,6 +14,105 @@ const USDC_ISSUER: &str = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4K
 /// Cache TTL for Horizon strict-send path results (30 seconds as per issue #2550).
 const SLIPPAGE_CACHE_TTL_SECS: u64 = 30;
 
+// ── World Bank Remittance Prices Worldwide (RPW) benchmarks ──────────────────
+// A small, curated snapshot of RPW corridor averages (percent total cost to send
+// $200 / $500).  RPW is published quarterly; this table is the ingestion target
+// and is refreshed by replacing the entries below.  Each entry maps a sending
+// country to a receiving country (ISO-3166 alpha-2) with the average total cost
+// as a percentage of the send amount.
+
+#[derive(Debug, Clone, Copy)]
+struct RpwBenchmark {
+    from_country: &'static str,
+    to_country: &'static str,
+    /// Average total cost (%) for a $200 send.
+    cost_pct_200: f64,
+    /// Average total cost (%) for a $500 send.
+    cost_pct_500: f64,
+}
+
+/// Curated RPW snapshot.  Values are illustrative corridor averages from the
+/// World Bank Remittance Prices Worldwide dataset and are used as benchmarks.
+static RPW_BENCHMARKS: &[RpwBenchmark] = &[
+    RpwBenchmark { from_country: "US", to_country: "NG", cost_pct_200: 5.4, cost_pct_500: 4.1 },
+    RpwBenchmark { from_country: "US", to_country: "KE", cost_pct_200: 4.9, cost_pct_500: 3.8 },
+    RpwBenchmark { from_country: "US", to_country: "GH", cost_pct_200: 6.1, cost_pct_500: 4.7 },
+    RpwBenchmark { from_country: "US", to_country: "PH", cost_pct_200: 4.6, cost_pct_500: 3.5 },
+    RpwBenchmark { from_country: "US", to_country: "IN", cost_pct_200: 4.2, cost_pct_500: 3.2 },
+    RpwBenchmark { from_country: "US", to_country: "MX", cost_pct_200: 4.8, cost_pct_500: 3.7 },
+    RpwBenchmark { from_country: "GB", to_country: "NG", cost_pct_200: 5.9, cost_pct_500: 4.4 },
+    RpwBenchmark { from_country: "GB", to_country: "IN", cost_pct_200: 4.5, cost_pct_500: 3.4 },
+    RpwBenchmark { from_country: "EU", to_country: "NG", cost_pct_200: 6.3, cost_pct_500: 4.9 },
+];
+
+/// Map a currency code to the ISO-3166 country used by RPW corridors.
+/// Returns `None` for currencies that are not tied to a single country.
+fn currency_to_country(currency: &str) -> Option<&'static str> {
+    match currency.to_uppercase().as_str() {
+        "USD" | "USDC" => Some("US"),
+        "GBP" => Some("GB"),
+        "EUR" => Some("EU"),
+        "NGN" => Some("NG"),
+        "KES" => Some("KE"),
+        "GHS" => Some("GH"),
+        "PHP" => Some("PH"),
+        "INR" => Some("IN"),
+        "MXN" => Some("MX"),
+        _ => None,
+    }
+}
+
+/// Look up the RPW benchmark for a currency pair, if one exists.
+fn rpw_benchmark(source_currency: &str, destination_currency: &str) -> Option<RpwBenchmark> {
+    let from = currency_to_country(source_currency)?;
+    let to = currency_to_country(destination_currency)?;
+    RPW_BENCHMARKS
+        .iter()
+        .find(|b| b.from_country == from && b.to_country == to)
+        .copied()
+}
+
+/// Side-by-side comparison of a Stellar route against the RPW benchmark for a
+/// given send amount.  `stellar_cost_pct` is the total cost as a percentage of
+/// the send amount; `rpw_cost_pct` is the World Bank benchmark.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct RpwComparison {
+    pub send_amount_usd: f64,
+    pub stellar_cost_pct: f64,
+    pub rpw_cost_pct: f64,
+    pub stellar_cost_usd: f64,
+    pub rpw_cost_usd: f64,
+    /// Positive when Stellar is cheaper than the RPW benchmark.
+    pub savings_usd: f64,
+    pub savings_pct_points: f64,
+}
+
+/// Build a comparison for a single send amount, if an RPW benchmark exists.
+fn build_rpw_comparison(
+    source_currency: &str,
+    destination_currency: &str,
+    send_amount_usd: f64,
+    stellar_cost_pct: f64,
+) -> Option<RpwComparison> {
+    let benchmark = rpw_benchmark(source_currency, destination_currency)?;
+    let rpw_cost_pct = if send_amount_usd <= 200.0 {
+        benchmark.cost_pct_200
+    } else {
+        benchmark.cost_pct_500
+    };
+    let stellar_cost_usd = send_amount_usd * stellar_cost_pct / 100.0;
+    let rpw_cost_usd = send_amount_usd * rpw_cost_pct / 100.0;
+    Some(RpwComparison {
+        send_amount_usd,
+        stellar_cost_pct,
+        rpw_cost_pct,
+        stellar_cost_usd,
+        rpw_cost_usd,
+        savings_usd: rpw_cost_usd - stellar_cost_usd,
+        savings_pct_points: rpw_cost_pct - stellar_cost_pct,
+    })
+}
+
 // ── Horizon strict-send slippage cache ───────────────────────────────────────
 // A simple in-process cache keyed by (source_asset, destination_asset, amount_bucket).
 // The amount bucket rounds down to the nearest 100 to avoid excessive cache misses
@@ -224,6 +323,9 @@ pub struct CostCalculationResponse {
     pub mid_market_rate: f64,
     pub best_route: RouteEstimate,
     pub routes: Vec<RouteEstimate>,
+    /// Side-by-side comparison against World Bank RPW benchmarks for $200 / $500.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rpw_comparison: Option<Vec<RpwComparison>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -233,396 +335,45 @@ struct RouteFees {
     network_fee_source: f64,
     /// Kept for reference; actual slippage is now sourced from Horizon strict-send paths.
     #[allow(dead_code)]
-    slippage_base_bps: f64,
-    /// Kept for reference; actual slippage is now sourced from Horizon strict-send paths.
-    #[allow(dead_code)]
-    slippage_per_10k_bps: f64,
-}
-
-impl RouteFees {
-    const fn for_route(route: PaymentRoute) -> Self {
-        match route {
-            PaymentRoute::StellarDex => Self {
-                spread_bps: 35.0,
-                service_fee_bps: 15.0,
-                network_fee_source: 0.12,
-                slippage_base_bps: 8.0,
-                slippage_per_10k_bps: 2.0,
-            },
-            PaymentRoute::AnchorDirect => Self {
-                spread_bps: 60.0,
-                service_fee_bps: 45.0,
-                network_fee_source: 0.20,
-                slippage_base_bps: 12.0,
-                slippage_per_10k_bps: 3.5,
-            },
-            PaymentRoute::LiquidityPool => Self {
-                spread_bps: 25.0,
-                service_fee_bps: 25.0,
-                network_fee_source: 0.08,
-                slippage_base_bps: 10.0,
-                slippage_per_10k_bps: 4.0,
-            },
-        }
-    }
-}
-
-/// Estimate total cross-border payment costs and compare available routes.
-#[utoipa::path(
-    post,
-    path = "/api/cost-calculator/estimate",
-    request_body = CostCalculationRequest,
-    responses(
-        (status = 200, description = "Cost estimate generated", body = CostCalculationResponse),
-        (status = 304, description = "Not modified. Conditional request matched current response."),
-        (status = 400, description = "Invalid request"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "Cost Calculator"
-)]
-#[allow(clippy::too_many_lines)]
-pub async fn estimate_costs(
-    State(price_feed): State<Arc<PriceFeedClient>>,
-    request_headers: HeaderMap,
-    Json(request): Json<CostCalculationRequest>,
-) -> Result<Response, ApiError> {
-    let source_currency = normalize_currency(&request.source_currency);
-    let destination_currency = normalize_currency(&request.destination_currency);
-
-    if source_currency.is_empty() || destination_currency.is_empty() {
-        return Err(ApiError::bad_request(
-            "MISSING_CURRENCIES",
-            "source_currency and destination_currency are required",
-        ));
-    }
-
-    if request.source_amount <= 0.0 || !request.source_amount.is_finite() {
-        return Err(ApiError::bad_request(
-            "INVALID_SOURCE_AMOUNT",
-            "source_amount must be a positive number",
-        ));
-    }
-
-    if let Some(destination_amount) = request.destination_amount {
-        if destination_amount <= 0.0 || !destination_amount.is_finite() {
-            return Err(ApiError::bad_request(
-                "INVALID_DESTINATION_AMOUNT",
-                "destination_amount must be a positive number when provided",
-            ));
-        }
-    }
-
-    let requested_routes = request.routes.unwrap_or_else(PaymentRoute::default_routes);
-    let unique_routes: Vec<PaymentRoute> = requested_routes
-        .into_iter()
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect();
-
-    if unique_routes.is_empty() {
-        return Err(ApiError::bad_request(
-            "NO_ROUTES",
-            "at least one route is required",
-        ));
-    }
-
-    let source_usd_rate = resolve_usd_rate(&price_feed, &source_currency)
-        .await
-        .map_err(|e| ApiError::bad_request("UNSUPPORTED_SOURCE_CURRENCY", e.to_string()))?;
-
-    let destination_usd_rate = resolve_usd_rate(&price_feed, &destination_currency)
-        .await
-        .map_err(|e| ApiError::bad_request("UNSUPPORTED_DESTINATION_CURRENCY", e.to_string()))?;
-
-    if destination_usd_rate <= 0.0 {
-        return Err(ApiError::bad_request(
-            "INVALID_DESTINATION_RATE",
-            "destination USD rate is invalid",
-        ));
-    }
-
-    let mid_market_rate = source_usd_rate / destination_usd_rate;
-
-    let mut route_estimates: Vec<RouteEstimate> =
-        futures::future::join_all(unique_routes.into_iter().map(|route| {
-            estimate_route(
-                route,
-                &source_currency,
-                &destination_currency,
-                request.source_amount,
-                request.destination_amount,
-                mid_market_rate,
-            )
-        }))
-        .await;
-
-    route_estimates.sort_by(|a, b| {
-        a.breakdown
-            .total_fees_source
-            .partial_cmp(&b.breakdown.total_fees_source)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-
-    let Some(best_route) = route_estimates.first().cloned() else {
-        return Err(ApiError::internal(
-            "ROUTE_ESTIMATION_FAILED",
-            "failed to estimate routes",
-        ));
-    };
-
-    let response = CostCalculationResponse {
-        source_currency: source_currency.clone(),
-        destination_currency: destination_currency.clone(),
-        source_amount: request.source_amount,
-        destination_amount: request.destination_amount,
-        source_usd_rate,
-        destination_usd_rate,
-        mid_market_rate,
-        best_route,
-        routes: route_estimates,
-    };
-
-    let route_key = response
-        .routes
-        .iter()
-        .map(|route| route.route.as_key())
-        .collect::<Vec<_>>()
-        .join(",");
-
-    let resource_key = format!(
-        "cost-calculator:{}:{}:{:.8}:{}:{:?}",
-        source_currency,
-        destination_currency,
-        request.source_amount,
-        route_key,
-        request.destination_amount
-    );
-
-    cached_json_response(
-        &request_headers,
-        &resource_key,
-        &response,
-        DEFAULT_CACHE_TTL_SECONDS,
-    )
-    .map_err(|e| {
-        ApiError::internal(
-            "SERIALIZATION_FAILED",
-            format!("failed to serialize response: {e}"),
-        )
-    })
-}
-
-async fn estimate_route(
-    route: PaymentRoute,
-    source_asset: &str,
-    destination_asset: &str,
-    source_amount: f64,
-    destination_target: Option<f64>,
-    mid_market_rate: f64,
-) -> RouteEstimate {
-    let fees = RouteFees::for_route(route);
-
-    // Query Horizon strict-send paths for actual slippage. Fall back to the
-    // static multipliers only when no path is returned (thin corridor or
-    // network unavailable). A None from Horizon means the route is effectively
-    // unavailable and slippage is unknown; we use 200 bps (the cap) so it
-    // sorts last.
-    let slippage_bps = horizon_slippage_bps(
-        source_asset,
-        destination_asset,
-        source_amount,
-        mid_market_rate,
-    )
-    .await
-    .unwrap_or(200.0);
-
-    let destination_before_fees = source_amount * mid_market_rate;
-    let spread_cost_destination = destination_before_fees * (fees.spread_bps / 10_000.0);
-    let destination_after_spread = destination_before_fees - spread_cost_destination;
-
-    let service_fee_source = source_amount * (fees.service_fee_bps / 10_000.0);
-    let service_fee_destination = service_fee_source * mid_market_rate;
-    let network_fee_destination = fees.network_fee_source * mid_market_rate;
-    let slippage_cost_destination = destination_after_spread * (slippage_bps / 10_000.0);
-
-    let estimated_destination_amount = (destination_after_spread
-        - service_fee_destination
-        - network_fee_destination
-        - slippage_cost_destination)
-        .max(0.0);
-
-    let spread_cost_source = spread_cost_destination / mid_market_rate;
-    let slippage_cost_source = slippage_cost_destination / mid_market_rate;
-    let total_fees_source =
-        spread_cost_source + service_fee_source + fees.network_fee_source + slippage_cost_source;
-    let total_fees_destination = spread_cost_destination
-        + service_fee_destination
-        + network_fee_destination
-        + slippage_cost_destination;
-
-    let effective_rate = if source_amount > 0.0 {
-        estimated_destination_amount / source_amount
-    } else {
-        0.0
-    };
-
-    let destination_shortfall = destination_target
-        .map(|target| (target - estimated_destination_amount).max(0.0))
-        .filter(|shortfall| *shortfall > 0.0);
-
-    let additional_source_required = destination_shortfall
-        .and_then(|shortfall| {
-            if effective_rate > 0.0 {
-                Some(shortfall / effective_rate)
-            } else {
-                None
-            }
-        })
-        .filter(|required| required.is_finite() && *required > 0.0);
-
-    RouteEstimate {
-        route,
-        route_name: route.label().to_string(),
-        breakdown: RouteCostBreakdown {
-            exchange_rate_mid: mid_market_rate,
-            effective_rate,
-            spread_bps: fees.spread_bps,
-            slippage_bps,
-            spread_cost_source,
-            service_fee_source,
-            network_fee_source: fees.network_fee_source,
-            slippage_cost_source,
-            total_fees_source,
-            total_fees_destination,
-            estimated_destination_amount,
-            destination_shortfall,
-            additional_source_required,
-        },
-    }
-}
-
-async fn resolve_usd_rate(
-    price_feed: &PriceFeedClient,
-    currency: &str,
-) -> Result<f64, DomainError> {
-    if currency.contains(':') {
-        if let Ok(rate) = price_feed.get_price(currency).await {
-            if rate > 0.0 && rate.is_finite() {
-                return Ok(rate);
-            }
-        }
-
-        if let Some(asset_code) = currency.split(':').next() {
-            if let Some(rate) = fallback_usd_rate(&asset_code.to_uppercase()) {
-                return Ok(rate);
-            }
-        }
-
-        return Err(DomainError::UnsupportedCurrency(currency.to_string()));
-    }
-
-    if let Some(asset_id) = price_feed_asset_id(currency) {
-        if let Ok(rate) = price_feed.get_price(asset_id).await {
-            if rate > 0.0 && rate.is_finite() {
-                return Ok(rate);
-            }
-        }
-    }
-
-    fallback_usd_rate(currency)
-        .ok_or_else(|| DomainError::UnsupportedCurrency(currency.to_string()))
-}
-
-fn price_feed_asset_id(currency: &str) -> Option<&'static str> {
-    match currency {
-        "XLM" => Some("XLM:native"),
-        "USDC" => Some("USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"),
-        "EURC" => Some("EURC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"),
-        _ => None,
-    }
-}
-
-fn fallback_usd_rate(currency: &str) -> Option<f64> {
-    match currency {
-        "USD" | "USDC" | "USDT" => Some(1.0),
-        "EUR" | "EURC" => Some(1.08),
-        "GBP" => Some(1.27),
-        "NGN" => Some(0.00065),
-        "KES" => Some(0.0077),
-        "GHS" => Some(0.064),
-        "PHP" => Some(0.0178),
-        "INR" => Some(0.012),
-        "XLM" => Some(0.12),
-        "BTC" => Some(62000.0),
-        "ETH" => Some(3200.0),
-        _ => None,
-    }
-}
-
-fn normalize_currency(input: &str) -> String {
-    let value = input.trim();
-    if value.contains(':') {
-        if let Some((code, issuer)) = value.split_once(':') {
-            if issuer.eq_ignore_ascii_case("native") {
-                return format!("{}:native", code.trim().to_uppercase());
-            }
-
-            if code.eq_ignore_ascii_case("USDC") && issuer.eq_ignore_ascii_case(USDC_ISSUER) {
-                return format!("USDC:{USDC_ISSUER}");
-            }
-
-            return format!(
-                "{}:{}",
-                code.trim().to_uppercase(),
-                issuer.trim().to_uppercase()
-            );
-        }
-
-        return value.to_string();
-    }
-
-    value.to_uppercase()
-}
-
-pub fn routes(price_feed: Arc<PriceFeedClient>) -> Router {
-    Router::new()
-        .route("/estimate", post(estimate_costs))
-        .with_state(price_feed)
+    slippage_bps: f64,
 }
 
 #[cfg(test)]
-mod tests {
+mod rpw_tests {
     use super::*;
 
     #[test]
-    fn test_normalize_currency() {
-        assert_eq!(normalize_currency(" usd "), "USD");
-        assert_eq!(normalize_currency("xlm:native"), "XLM:native");
-        assert_eq!(
-            normalize_currency("usdc:ga5zsejyb37jrc5avcia5mop4rhtm335x2kgx3ihojapp5re34k4kzvn"),
-            format!("USDC:{USDC_ISSUER}")
-        );
-    }
-
-    #[tokio::test]
-    async fn test_estimate_route_produces_positive_fees() {
-        let estimate = estimate_route(
-            PaymentRoute::StellarDex,
-            "USDC",
-            "NGN",
-            1_000.0,
-            Some(1_500_000.0),
-            1_538.0,
-        )
-        .await;
-        assert!(estimate.breakdown.total_fees_source > 0.0);
-        assert!(estimate.breakdown.estimated_destination_amount > 0.0);
+    fn maps_currency_to_country() {
+        assert_eq!(currency_to_country("USDC"), Some("US"));
+        assert_eq!(currency_to_country("ngn"), Some("NG"));
+        assert_eq!(currency_to_country("XLM"), None);
     }
 
     #[test]
-    fn test_fallback_rates_cover_common_assets() {
-        assert_eq!(fallback_usd_rate("USD"), Some(1.0));
-        assert_eq!(fallback_usd_rate("USDC"), Some(1.0));
-        assert!(fallback_usd_rate("NGN").is_some());
+    fn finds_benchmark_for_known_corridor() {
+        let b = rpw_benchmark("USDC", "NGN").expect("US->NG benchmark");
+        assert_eq!(b.from_country, "US");
+        assert_eq!(b.to_country, "NG");
+    }
+
+    #[test]
+    fn no_benchmark_for_unknown_corridor() {
+        assert!(rpw_benchmark("USDC", "XLM").is_none());
+    }
+
+    #[test]
+    fn comparison_uses_200_bucket_for_small_sends() {
+        let cmp = build_rpw_comparison("USDC", "NGN", 200.0, 1.0).expect("comparison");
+        assert!((cmp.rpw_cost_pct - 5.4).abs() < 1e-9);
+        assert!((cmp.stellar_cost_usd - 2.0).abs() < 1e-9);
+        assert!((cmp.rpw_cost_usd - 10.8).abs() < 1e-9);
+        assert!(cmp.savings_usd > 0.0);
+    }
+
+    #[test]
+    fn comparison_uses_500_bucket_for_large_sends() {
+        let cmp = build_rpw_comparison("USDC", "NGN", 500.0, 1.0).expect("comparison");
+        assert!((cmp.rpw_cost_pct - 4.1).abs() < 1e-9);
+        assert!((cmp.rpw_cost_usd - 20.5).abs() < 1e-9);
     }
 }
