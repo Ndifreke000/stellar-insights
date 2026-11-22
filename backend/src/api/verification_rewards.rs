@@ -18,7 +18,9 @@ use tracing::info;
 
 use crate::auth::sep10_simple::Sep10Service;
 use crate::auth::{sep10_auth_middleware, Sep10User};
-use crate::services::verification_rewards::{VerificationRewardsService, VerifySnapshotRequest};
+use crate::services::verification_rewards::{
+    ClusterInfo, ReviewQueueItem, VerificationRewardsService, VerifySnapshotRequest,
+};
 
 /// Build verification rewards routes
 pub fn routes(
@@ -35,7 +37,22 @@ pub fn routes(
         ))
         .route("/leaderboard", get(get_leaderboard))
         .route("/stats/{user_id}", get(get_public_user_stats))
+        .route("/review-queue", get(get_review_queue))
+        .route("/review-queue/{id}/approve", post(approve_review))
+        .route("/review-queue/{id}/reject", post(reject_review))
+        .route("/cluster/{user_id}", get(get_cluster_info))
         .with_state(service)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ReviewQueueQuery {
+    pub status: Option<String>,
+    #[serde(default = "default_review_limit")]
+    pub limit: i32,
+}
+
+const fn default_review_limit() -> i32 {
+    50
 }
 
 /// Query parameters for leaderboard
@@ -195,6 +212,104 @@ pub async fn get_public_user_stats(
         .map_err(|e| VerificationError::DatabaseError(e.to_string()))?;
 
     Ok((StatusCode::OK, Json(stats)).into_response())
+}
+
+/// GET /api/verifications/review-queue - Get items in verification review queue (#2823)
+#[utoipa::path(
+    get,
+    path = "/api/verifications/review-queue",
+    params(
+        ("status" = Option<String>, Query, description = "Status filter ('pending', 'approved', 'rejected')"),
+        ("limit" = Option<i32>, Query, description = "Maximum items to return")
+    ),
+    responses(
+        (status = 200, description = "Verification review queue items", body = Vec<ReviewQueueItem>)
+    ),
+    tag = "Verification Rewards"
+)]
+pub async fn get_review_queue(
+    State(service): State<Arc<VerificationRewardsService>>,
+    Query(query): Query<ReviewQueueQuery>,
+) -> Result<Response, VerificationError> {
+    let limit = query.limit.clamp(1, 100);
+    let items = service
+        .get_review_queue(query.status.as_deref(), limit)
+        .await
+        .map_err(|e| VerificationError::DatabaseError(e.to_string()))?;
+
+    Ok((StatusCode::OK, Json(items)).into_response())
+}
+
+/// POST /api/verifications/review-queue/{id}/approve - Approve review item
+#[utoipa::path(
+    post,
+    path = "/api/verifications/review-queue/{id}/approve",
+    params(
+        ("id" = String, Path, description = "Review item ID")
+    ),
+    responses(
+        (status = 200, description = "Review item approved")
+    ),
+    tag = "Verification Rewards"
+)]
+pub async fn approve_review(
+    State(service): State<Arc<VerificationRewardsService>>,
+    Path(id): Path<String>,
+) -> Result<Response, VerificationError> {
+    service
+        .approve_review(&id, "admin")
+        .await
+        .map_err(|e| VerificationError::DatabaseError(e.to_string()))?;
+
+    Ok((StatusCode::OK, Json(serde_json::json!({"status": "approved"}))).into_response())
+}
+
+/// POST /api/verifications/review-queue/{id}/reject - Reject review item
+#[utoipa::path(
+    post,
+    path = "/api/verifications/review-queue/{id}/reject",
+    params(
+        ("id" = String, Path, description = "Review item ID")
+    ),
+    responses(
+        (status = 200, description = "Review item rejected")
+    ),
+    tag = "Verification Rewards"
+)]
+pub async fn reject_review(
+    State(service): State<Arc<VerificationRewardsService>>,
+    Path(id): Path<String>,
+) -> Result<Response, VerificationError> {
+    service
+        .reject_review(&id, "admin")
+        .await
+        .map_err(|e| VerificationError::DatabaseError(e.to_string()))?;
+
+    Ok((StatusCode::OK, Json(serde_json::json!({"status": "rejected"}))).into_response())
+}
+
+/// GET /api/verifications/cluster/{user_id} - Get cluster information for sybil tracking
+#[utoipa::path(
+    get,
+    path = "/api/verifications/cluster/{user_id}",
+    params(
+        ("user_id" = String, Path, description = "User ID")
+    ),
+    responses(
+        (status = 200, description = "Cluster info", body = ClusterInfo)
+    ),
+    tag = "Verification Rewards"
+)]
+pub async fn get_cluster_info(
+    State(service): State<Arc<VerificationRewardsService>>,
+    Path(user_id): Path<String>,
+) -> Result<Response, VerificationError> {
+    let info = service
+        .get_cluster_info(&user_id)
+        .await
+        .map_err(|e| VerificationError::DatabaseError(e.to_string()))?;
+
+    Ok((StatusCode::OK, Json(info)).into_response())
 }
 
 /// Error types for verification API

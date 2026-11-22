@@ -27,9 +27,10 @@ This index covers documentation that is still relevant to understanding or runni
 | [backend-modules.md](backend-modules.md) | Backend module map |
 | [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) | Top-level directory layout |
 | [DEPENDENCIES.md](DEPENDENCIES.md) | Key dependencies and why they were chosen |
-| [REACT_SDK_SSR_SUSPENSE.md](REACT_SDK_SSR_SUSPENSE.md) | Proposed: React SDK server rendering, Suspense and hydration (#2844) |
-| [MOBILE_OFFLINE_SYNC.md](MOBILE_OFFLINE_SYNC.md) | Proposed: offline watchlist sync and conflict resolution (#2846) |
-| [PUSH_NOTIFICATION_PIPELINE.md](PUSH_NOTIFICATION_PIPELINE.md) | Proposed: push outbox, delivery receipts, token pruning (#2847) |
+| [design/2856-async-data-export.md](design/2856-async-data-export.md) | Design note #2856: async export jobs, Parquet/CSV, signed resumable downloads |
+| [design/2857-trustless-snapshot-verification.md](design/2857-trustless-snapshot-verification.md) | Design note #2857: browser-side snapshot verification against the chain |
+| [design/2858-contract-event-listener-cursor.md](design/2858-contract-event-listener-cursor.md) | Design note #2858: contract event cursor expiry, pagination, gap recording |
+| [design/2859-admin-rbac.md](design/2859-admin-rbac.md) | Design note #2859: admin roles, permissions matrix, enforcement and audit |
 
 ## Operations & infrastructure
 
@@ -54,6 +55,7 @@ This index covers documentation that is still relevant to understanding or runni
 | [API_SLOS.md](API_SLOS.md) | API SLOs |
 | [SLOs_AND_ALERTING.md](SLOs_AND_ALERTING.md) | SLOs and alerting rules |
 | [DEPLOYMENT_SLOS_AND_ALERTING.md](DEPLOYMENT_SLOS_AND_ALERTING.md) | Deployment-level SLOs |
+| [CORRIDOR_ALERT_RULES_ENGINE.md](CORRIDOR_ALERT_RULES_ENGINE.md) | Composable corridor alert rules and backtesting (#2855) |
 | [APM_INTEGRATION.md](APM_INTEGRATION.md) | APM integration |
 | [SENTRY_INTEGRATION.md](SENTRY_INTEGRATION.md) | Sentry error tracking |
 | [ELK_LOG_AGGREGATION.md](ELK_LOG_AGGREGATION.md) | ELK log aggregation |
@@ -76,8 +78,20 @@ This index covers documentation that is still relevant to understanding or runni
 | [AUDIT_LOG.md](AUDIT_LOG.md) | Audit logging |
 | [SESSION_MANAGEMENT.md](SESSION_MANAGEMENT.md) | Session management |
 | [TWO_FACTOR_AUTHENTICATION.md](TWO_FACTOR_AUTHENTICATION.md) | 2FA implementation |
+| [2FA_WEBAUTHN_AND_RECOVERY_CODES.md](2FA_WEBAUTHN_AND_RECOVERY_CODES.md) | WebAuthn/passkeys, recovery codes, admin 2FA (#2852) |
+| [OAUTH_PKCE_STATE_AND_ACCOUNT_LINKING.md](OAUTH_PKCE_STATE_AND_ACCOUNT_LINKING.md) | OAuth PKCE, state binding, account linking (#2853) |
+| [MULTISIG_COORDINATION_SERVICE.md](MULTISIG_COORDINATION_SERVICE.md) | Multisig signature collection and submission (#2854) |
 | [IP_WHITELIST.md](IP_WHITELIST.md) | IP whitelist |
 | [API_REQUEST_SIGNING.md](API_REQUEST_SIGNING.md) | Request signing |
+| [SUPPLY_CHAIN_SECURITY.md](SUPPLY_CHAIN_SECURITY.md) | SBOMs, SLSA provenance, signed images, npm/PyPI provenance (#2848) |
+
+## CI & testing
+
+| Document | What it covers |
+| --- | --- |
+| [CI_PIPELINE.md](CI_PIPELINE.md) | Workflow inventory and consolidation into reusable, path-filtered pipelines (#2849) |
+| [PROPERTY_BASED_TESTING.md](PROPERTY_BASED_TESTING.md) | Aggregation invariants and proptest strategy (#2850) |
+| [MUTATION_TESTING.md](MUTATION_TESTING.md) | cargo-mutants on auth, 2FA, crypto and the contract (#2851) |
 
 ## Contracts & on-chain
 

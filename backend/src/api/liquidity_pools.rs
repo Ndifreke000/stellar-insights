@@ -12,7 +12,9 @@ use axum::{
 use serde::Deserialize;
 use std::sync::Arc;
 
-use crate::models::{LiquidityPool, LiquidityPoolSnapshot, LiquidityPoolStats};
+use crate::models::{
+    LiquidityPool, LiquidityPoolSnapshot, LiquidityPoolStats, LpReturnsAnalytics,
+};
 use crate::services::liquidity_pool_analyzer::LiquidityPoolAnalyzer;
 
 #[derive(Deserialize)]
@@ -48,6 +50,7 @@ pub fn routes(analyzer: Arc<LiquidityPoolAnalyzer>) -> Router {
         .route("/rankings", get(get_pool_rankings))
         .route("/{pool_id}", get(get_pool_detail))
         .route("/{pool_id}/snapshots", get(get_pool_snapshots))
+        .route("/{pool_id}/analytics", get(get_lp_analytics))
         .with_state(analyzer)
 }
 
@@ -178,4 +181,27 @@ async fn get_pool_snapshots(
         .await
         .unwrap_or_default();
     Json(snapshots)
+}
+
+/// GET /api/liquidity-pools/{pool_id}/analytics - Get LP impermanent loss and fee APR analytics
+#[utoipa::path(
+    get,
+    path = "/api/liquidity-pools/{pool_id}/analytics",
+    params(
+        ("pool_id" = String, Path, description = "Liquidity pool ID")
+    ),
+    responses(
+        (status = 200, description = "LP analytics with fee APR, IL and net APR", body = LpReturnsAnalytics),
+        (status = 404, description = "Liquidity pool not found")
+    ),
+    tag = "Liquidity Pools"
+)]
+async fn get_lp_analytics(
+    State(analyzer): State<Arc<LiquidityPoolAnalyzer>>,
+    Path(pool_id): Path<String>,
+) -> Result<Json<LpReturnsAnalytics>, axum::http::StatusCode> {
+    match analyzer.get_lp_returns_analytics(&pool_id).await {
+        Ok(analytics) => Ok(Json(analytics)),
+        Err(_) => Err(axum::http::StatusCode::NOT_FOUND),
+    }
 }

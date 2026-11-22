@@ -41,6 +41,33 @@ pub struct VerificationResponse {
     pub message: String,
 }
 
+/// Item in the manual review queue for flagged sybil or capped reward claims (#2823)
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
+pub struct ReviewQueueItem {
+    pub id: String,
+    pub verification_id: String,
+    pub user_id: String,
+    pub snapshot_id: String,
+    pub epoch: i64,
+    pub cluster_id: Option<String>,
+    pub reason: String,
+    pub status: String,
+    pub created_at: String,
+    pub reviewed_at: Option<String>,
+    pub reviewed_by: Option<String>,
+}
+
+/// Cluster statistics and information for sybil resistance (#2823)
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ClusterInfo {
+    pub cluster_id: String,
+    pub user_id: String,
+    pub funding_account: Option<String>,
+    pub daily_reward_cap: i32,
+    pub current_day_rewards: i32,
+    pub accounts_in_cluster: i64,
+}
+
 /// User reward statistics
 #[derive(Debug, Serialize)]
 pub struct UserRewardStats {
@@ -75,7 +102,7 @@ impl VerificationRewardsService {
         Self { db }
     }
 
-    /// Verify a snapshot hash and award points if successful
+    /// Verify a snapshot hash and award points if successful with anti-sybil and double-claim protection (#2823)
     pub async fn verify_and_reward(
         &self,
         user_id: &str,
@@ -92,11 +119,25 @@ impl VerificationRewardsService {
         // Fetch the snapshot from database
         let snapshot = self.fetch_snapshot(&request.snapshot_id).await?;
 
+        // Double claim prevention: check if user already claimed for this snapshot epoch
+        let already_verified: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM snapshot_verifications WHERE epoch = ? AND user_id = ?",
+        )
+        .bind(snapshot.epoch)
+        .bind(user_id)
+        .fetch_one(self.db.pool())
+        .await
+        .unwrap_or(0);
+
+        if already_verified > 0 {
+            return Err(anyhow!("Reward already claimed for this snapshot epoch"));
+        }
+
         // Compare hashes
         let is_match = snapshot.hash == request.submitted_hash;
 
-        // Calculate reward points
-        let reward_points = if is_match {
+        // Calculate potential reward points
+        let mut calculated_points = if is_match {
             let mut points = BASE_REWARD_POINTS;
 
             // Add early verification bonus
@@ -113,34 +154,154 @@ impl VerificationRewardsService {
             FAILED_VERIFICATION_PENALTY
         };
 
-        // Record verification attempt
+        // Anti-sybil check: cluster clustering and cluster daily reward cap
+        let cluster_id = self.get_or_create_cluster(user_id).await?;
+        let cluster_cap = self.get_cluster_cap_status(&cluster_id).await?;
+
+        let mut flagged_for_review = false;
+        let mut review_reason = String::new();
+
+        if is_match && calculated_points > 0 {
+            if cluster_cap.current_day_rewards + calculated_points > cluster_cap.daily_reward_cap {
+                flagged_for_review = true;
+                review_reason = format!(
+                    "Cluster reward cap exceeded ({}/{} daily points)",
+                    cluster_cap.current_day_rewards, cluster_cap.daily_reward_cap
+                );
+                calculated_points = 0; // withheld pending review
+            } else if self.is_suspicious_new_account(user_id).await? {
+                flagged_for_review = true;
+                review_reason = "New account velocity check triggered".to_string();
+                calculated_points = 0; // withheld pending review
+            }
+        }
+
+        let reward_points = calculated_points;
         let verification_id = Uuid::new_v4().to_string();
-        self.record_verification(
-            &verification_id,
-            user_id,
-            &request.snapshot_id,
-            snapshot.epoch,
-            &request.submitted_hash,
-            &snapshot.hash,
-            is_match,
-            reward_points,
+
+        // Transactional execution with unique constraint enforcement
+        let mut tx = self.db.pool().begin().await.context("Failed to start transaction")?;
+
+        let insert_res = sqlx::query(
+            r"
+            INSERT INTO snapshot_verifications
+            (id, user_id, snapshot_id, epoch, submitted_hash, expected_hash, is_match, reward_points, verified_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ",
         )
-        .await?;
+        .bind(&verification_id)
+        .bind(user_id)
+        .bind(&request.snapshot_id)
+        .bind(snapshot.epoch)
+        .bind(&request.submitted_hash)
+        .bind(&snapshot.hash)
+        .bind(is_match)
+        .bind(reward_points)
+        .bind(Utc::now().to_rfc3339())
+        .execute(&mut *tx)
+        .await;
+
+        if let Err(e) = insert_res {
+            let err_msg = e.to_string();
+            if err_msg.contains("UNIQUE") || err_msg.contains("idx_snapshot_verifications_epoch_user") {
+                return Err(anyhow!("Reward already claimed for this snapshot epoch"));
+            }
+            return Err(anyhow!(e));
+        }
+
+        // If flagged for review, record in verification_review_queue
+        if flagged_for_review {
+            let review_id = Uuid::new_v4().to_string();
+            sqlx::query(
+                r"
+                INSERT INTO verification_review_queue (
+                    id, verification_id, user_id, snapshot_id, epoch, cluster_id, reason, status, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP)
+                ",
+            )
+            .bind(&review_id)
+            .bind(&verification_id)
+            .bind(user_id)
+            .bind(&request.snapshot_id)
+            .bind(snapshot.epoch)
+            .bind(&cluster_id)
+            .bind(&review_reason)
+            .execute(&mut *tx)
+            .await?;
+        } else if reward_points > 0 {
+            // Update cluster rewards
+            sqlx::query(
+                r"
+                INSERT INTO cluster_reward_caps (cluster_id, daily_reward_cap, current_day_rewards, last_reset_date)
+                VALUES (?, 100, ?, DATE('now'))
+                ON CONFLICT(cluster_id) DO UPDATE SET
+                    current_day_rewards = CASE 
+                        WHEN last_reset_date = DATE('now') THEN current_day_rewards + excluded.current_day_rewards
+                        ELSE excluded.current_day_rewards
+                    END,
+                    last_reset_date = DATE('now')
+                ",
+            )
+            .bind(&cluster_id)
+            .bind(reward_points)
+            .execute(&mut *tx)
+            .await?;
+        }
 
         // Update user rewards
-        let total_points = self
-            .update_user_rewards(user_id, is_match, reward_points)
-            .await?;
+        sqlx::query(
+            r"
+            INSERT INTO user_rewards (user_id, total_points, successful_verifications, failed_verifications, last_verification_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                total_points = total_points + ?,
+                successful_verifications = successful_verifications + ?,
+                failed_verifications = failed_verifications + ?,
+                last_verification_at = ?,
+                updated_at = ?
+            ",
+        )
+        .bind(user_id)
+        .bind(reward_points)
+        .bind(i32::from(is_match))
+        .bind(i32::from(!is_match))
+        .bind(Utc::now().to_rfc3339())
+        .bind(Utc::now().to_rfc3339())
+        .bind(reward_points)
+        .bind(i32::from(is_match))
+        .bind(i32::from(!is_match))
+        .bind(Utc::now().to_rfc3339())
+        .bind(Utc::now().to_rfc3339())
+        .execute(&mut *tx)
+        .await
+        .context("Failed to update user rewards")?;
 
-        let message = if is_match {
+        let total_points: i32 = sqlx::query_scalar(
+            r"
+            SELECT total_points
+            FROM user_rewards
+            WHERE user_id = ?
+            ",
+        )
+        .bind(user_id)
+        .fetch_one(&mut *tx)
+        .await
+        .context("Failed to fetch updated total")?;
+
+        tx.commit().await.context("Failed to commit transaction")?;
+
+        let message = if flagged_for_review {
+            format!("Verification successful! Flagged for anti-sybil review: {review_reason}")
+        } else if is_match {
             format!("Verification successful! You earned {reward_points} points.")
         } else {
             "Verification failed. Hash does not match.".to_string()
         };
 
         info!(
-            "Verification complete: user={}, match={}, points={}, total={}",
-            user_id, is_match, reward_points, total_points
+            "Verification complete: user={}, match={}, points={}, total={}, flagged={}",
+            user_id, is_match, reward_points, total_points, flagged_for_review
         );
 
         Ok(VerificationResponse {
@@ -445,6 +606,254 @@ impl VerificationRewardsService {
 
         Ok(total)
     }
+
+    // ========================================================================
+    // Anti-Sybil & Review Queue Management (#2823)
+    // ========================================================================
+
+    /// Get or create cluster for a user. If the user has a funding account registered,
+    /// it links to the cluster of that funding account.
+    pub async fn get_or_create_cluster(&self, user_id: &str) -> Result<String> {
+        let existing: Option<String> = sqlx::query_scalar(
+            "SELECT cluster_id FROM verifier_account_clusters WHERE user_id = ?",
+        )
+        .bind(user_id)
+        .fetch_optional(self.db.pool())
+        .await
+        .unwrap_or(None);
+
+        if let Some(cluster_id) = existing {
+            return Ok(cluster_id);
+        }
+
+        // New user cluster: default to user's own cluster ID
+        let cluster_id = format!("cluster_{user_id}");
+        sqlx::query(
+            r"
+            INSERT INTO verifier_account_clusters (user_id, cluster_id, created_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id) DO NOTHING
+            ",
+        )
+        .bind(user_id)
+        .bind(&cluster_id)
+        .execute(self.db.pool())
+        .await?;
+
+        Ok(cluster_id)
+    }
+
+    /// Link a user account to a funding account for sybil clustering
+    pub async fn set_account_funding_source(
+        &self,
+        user_id: &str,
+        funding_account: &str,
+    ) -> Result<String> {
+        let existing_cluster: Option<String> = sqlx::query_scalar(
+            "SELECT cluster_id FROM verifier_account_clusters WHERE funding_account = ? LIMIT 1",
+        )
+        .bind(funding_account)
+        .fetch_optional(self.db.pool())
+        .await
+        .unwrap_or(None);
+
+        let cluster_id = existing_cluster.unwrap_or_else(|| format!("cluster_fund_{funding_account}"));
+
+        sqlx::query(
+            r"
+            INSERT INTO verifier_account_clusters (user_id, cluster_id, funding_account, created_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id) DO UPDATE SET
+                cluster_id = excluded.cluster_id,
+                funding_account = excluded.funding_account
+            ",
+        )
+        .bind(user_id)
+        .bind(&cluster_id)
+        .bind(funding_account)
+        .execute(self.db.pool())
+        .await?;
+
+        Ok(cluster_id)
+    }
+
+    /// Check current cluster rewards for today
+    async fn get_cluster_cap_status(&self, cluster_id: &str) -> Result<ClusterCapStatus> {
+        let row: Option<(i32, i32, String)> = sqlx::query_as(
+            r"
+            SELECT daily_reward_cap, current_day_rewards, last_reset_date
+            FROM cluster_reward_caps
+            WHERE cluster_id = ?
+            ",
+        )
+        .bind(cluster_id)
+        .fetch_optional(self.db.pool())
+        .await?;
+
+        match row {
+            Some((cap, rewards, reset_date)) => {
+                let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+                let current_rewards = if reset_date == today { rewards } else { 0 };
+                Ok(ClusterCapStatus {
+                    daily_reward_cap: cap,
+                    current_day_rewards: current_rewards,
+                })
+            }
+            None => Ok(ClusterCapStatus {
+                daily_reward_cap: 100,
+                current_day_rewards: 0,
+            }),
+        }
+    }
+
+    /// Check if account is suspiciously new or lacks activity
+    async fn is_suspicious_new_account(&self, user_id: &str) -> Result<bool> {
+        let successful_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM snapshot_verifications WHERE user_id = ? AND is_match = 1",
+        )
+        .bind(user_id)
+        .fetch_one(self.db.pool())
+        .await
+        .unwrap_or(0);
+
+        let user_created_today: i64 = sqlx::query_scalar(
+            r"
+            SELECT COUNT(*) FROM users
+            WHERE id = ? AND DATE(created_at) = DATE('now')
+            ",
+        )
+        .bind(user_id)
+        .fetch_one(self.db.pool())
+        .await
+        .unwrap_or(0);
+
+        Ok(successful_count == 0 && user_created_today > 0)
+    }
+
+    /// Fetch items from the manual review queue
+    pub async fn get_review_queue(&self, status: Option<&str>, limit: i32) -> Result<Vec<ReviewQueueItem>> {
+        let q_status = status.unwrap_or("pending");
+        let rows = sqlx::query_as::<_, ReviewQueueItem>(
+            r"
+            SELECT id, verification_id, user_id, snapshot_id, epoch, cluster_id, reason, status, created_at, reviewed_at, reviewed_by
+            FROM verification_review_queue
+            WHERE status = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            ",
+        )
+        .bind(q_status)
+        .bind(limit)
+        .fetch_all(self.db.pool())
+        .await?;
+
+        Ok(rows)
+    }
+
+    /// Approve a flagged verification claim and release reward points
+    pub async fn approve_review(&self, review_id: &str, reviewer: &str) -> Result<()> {
+        let row: Option<(String, String, i64)> = sqlx::query_as(
+            "SELECT verification_id, user_id, epoch FROM verification_review_queue WHERE id = ? AND status = 'pending'",
+        )
+        .bind(review_id)
+        .fetch_optional(self.db.pool())
+        .await?;
+
+        let (verification_id, user_id, _epoch) = row.ok_or_else(|| anyhow!("Pending review item not found"))?;
+
+        let mut tx = self.db.pool().begin().await?;
+
+        // Update review status
+        sqlx::query(
+            r"
+            UPDATE verification_review_queue
+            SET status = 'approved', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = ?
+            WHERE id = ?
+            ",
+        )
+        .bind(reviewer)
+        .bind(review_id)
+        .execute(&mut *tx)
+        .await?;
+
+        // Update verification record reward_points to BASE_REWARD_POINTS
+        sqlx::query(
+            "UPDATE snapshot_verifications SET reward_points = ? WHERE id = ?",
+        )
+        .bind(BASE_REWARD_POINTS)
+        .bind(&verification_id)
+        .execute(&mut *tx)
+        .await?;
+
+        // Update user_rewards
+        sqlx::query(
+            r"
+            UPDATE user_rewards
+            SET total_points = total_points + ?, updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = ?
+            ",
+        )
+        .bind(BASE_REWARD_POINTS)
+        .bind(&user_id)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// Reject a flagged verification claim
+    pub async fn reject_review(&self, review_id: &str, reviewer: &str) -> Result<()> {
+        sqlx::query(
+            r"
+            UPDATE verification_review_queue
+            SET status = 'rejected', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = ?
+            WHERE id = ? AND status = 'pending'
+            ",
+        )
+        .bind(reviewer)
+        .bind(review_id)
+        .execute(self.db.pool())
+        .await?;
+
+        Ok(())
+    }
+
+    /// Get cluster info and statistics for an account
+    pub async fn get_cluster_info(&self, user_id: &str) -> Result<ClusterInfo> {
+        let cluster_id = self.get_or_create_cluster(user_id).await?;
+        let cap_status = self.get_cluster_cap_status(&cluster_id).await?;
+
+        let funding: Option<String> = sqlx::query_scalar(
+            "SELECT funding_account FROM verifier_account_clusters WHERE user_id = ?",
+        )
+        .bind(user_id)
+        .fetch_optional(self.db.pool())
+        .await
+        .unwrap_or(None);
+
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM verifier_account_clusters WHERE cluster_id = ?",
+        )
+        .bind(&cluster_id)
+        .fetch_one(self.db.pool())
+        .await
+        .unwrap_or(1);
+
+        Ok(ClusterInfo {
+            cluster_id,
+            user_id: user_id.to_string(),
+            funding_account: funding,
+            daily_reward_cap: cap_status.daily_reward_cap,
+            current_day_rewards: cap_status.current_day_rewards,
+            accounts_in_cluster: count,
+        })
+    }
+}
+
+struct ClusterCapStatus {
+    daily_reward_cap: i32,
+    current_day_rewards: i32,
 }
 
 #[derive(Debug)]

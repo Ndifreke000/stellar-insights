@@ -400,6 +400,32 @@ pub struct LiquidityPoolStats {
     pub avg_impermanent_loss: f64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct LpSnapshotReturn {
+    pub snapshot_at: DateTime<Utc>,
+    pub fee_apr: f64,
+    pub impermanent_loss_pct: f64,
+    pub net_apr: f64,
+    pub cumulative_fees_usd: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct LpReturnsAnalytics {
+    pub pool_id: String,
+    pub fee_apr: f64,
+    pub impermanent_loss_pct: f64,
+    pub net_apr: f64,
+    pub fee_income_24h_usd: f64,
+    pub fee_income_7d_usd: f64,
+    pub fee_income_30d_usd: f64,
+    pub price_source: String,
+    pub initial_price_ratio: f64,
+    pub current_price_ratio: f64,
+    pub hodl_value_usd: f64,
+    pub pool_value_usd: f64,
+    pub historical_returns: Vec<LpSnapshotReturn>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MuxedAccountAnalytics {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -490,6 +516,45 @@ pub struct TrustlineMetrics {
     pub total_assets_tracked: i64,
     pub total_trustlines_across_network: i64,
     pub active_assets: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ScoreComponentDetail {
+    pub name: String,
+    pub raw_metric: f64,
+    pub normalized_score: f64,
+    pub weight: f64,
+    pub weighted_score: f64,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct AnchorHealthScoreExplanation {
+    pub anchor_id: String,
+    pub methodology_version: String,
+    pub composite_score: f64,
+    pub status: String,
+    pub components: Vec<ScoreComponentDetail>,
+    pub methodology_doc_url: String,
+    pub computed_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct StageLatencyStat {
+    pub stage: String,
+    pub p50_ms: f64,
+    pub p95_ms: f64,
+    pub avg_ms: f64,
+    pub sample_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct AnchorSettlementStagesResponse {
+    pub anchor_id: String,
+    pub total_sample_count: i64,
+    pub stages: Vec<StageLatencyStat>,
+    pub overall_p50_ms: f64,
+    pub overall_p95_ms: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
