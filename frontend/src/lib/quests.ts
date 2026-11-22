@@ -1,6 +1,10 @@
 /**
  * Stellar Quest-style challenges and achievements
- * Tracks user progress via localStorage; detects completion from navigation
+ *
+ * Progress is server-authoritative: the backend evaluates quest completion
+ * from on-chain/activity events and returns signed completion records.
+ * The client only caches verified records for display and never grants
+ * progress on its own (client-side progress is ignored by the server).
  */
 
 export type QuestCategory = "exploration" | "analysis" | "network" | "defi" | "education";
@@ -19,6 +23,8 @@ export interface Quest {
 export interface QuestProgress {
   questId: string;
   completedAt: string;
+  /** Server signature over the completion record; absent means unverified. */
+  signature?: string;
 }
 
 export interface Achievement {
@@ -143,35 +149,75 @@ export const ACHIEVEMENTS: Achievement[] = [
 
 const STORAGE_KEY = "stellar_quests_progress";
 
+/**
+ * Read the locally cached, server-signed completion records.
+ *
+ * This cache is display-only. It is never trusted as the source of truth:
+ * the backend recomputes progress from on-chain/activity events and only
+ * signed records are surfaced here. Unsigned/forged entries are dropped.
+ */
 export function getProgress(): QuestProgress[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (p): p is QuestProgress =>
+        p &&
+        typeof p.questId === "string" &&
+        typeof p.completedAt === "string" &&
+        typeof p.signature === "string" &&
+        p.signature.length > 0,
+    );
   } catch {
     return [];
   }
 }
 
-export function markQuestComplete(questId: string): void {
-  const progress = getProgress();
-  if (progress.some((p) => p.questId === questId)) return;
-  progress.push({ questId, completedAt: new Date().toISOString() });
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
+/**
+ * Persist server-issued, signed completion records into the local cache.
+ *
+ * Callers must pass records returned by the backend; the client cannot mint
+ * progress on its own. Records without a signature are ignored.
+ */
+export function applyServerProgress(records: QuestProgress[]): void {
+  if (typeof window === "undefined") return;
+  const verified = records.filter(
+    (r) => r && typeof r.questId === "string" && typeof r.signature === "string" && r.signature.length > 0,
+  );
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(verified));
 }
 
 export function isQuestComplete(questId: string): boolean {
   return getProgress().some((p) => p.questId === questId);
 }
 
-export function checkPathCompletion(pathname: string): void {
-  for (const quest of QUESTS) {
-    if (isQuestComplete(quest.id)) continue;
-    const matches = Array.isArray(quest.pathMatch) ? quest.pathMatch : [quest.pathMatch];
-    if (matches.some((p) => pathname.startsWith(p) || pathname === p)) {
-      markQuestComplete(quest.id);
-      break; // One completion per navigation
+/**
+ * Report a navigation event to the backend for server-side evaluation.
+ *
+ * The client no longer marks quests complete locally; it only notifies the
+ * server, which decides (from activity events) whether a quest is earned and
+ * returns signed completion records. Failures are swallowed so navigation is
+ * never blocked by quest tracking.
+ */
+export async function reportActivity(pathname: string): Promise<void> {
+  if (typeof window === "undefined") return;
+  try {
+    const res = await fetch("/api/v1/quests/activity", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ path: pathname }),
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data && Array.isArray(data.progress)) {
+      applyServerProgress(data.progress as QuestProgress[]);
     }
+  } catch {
+    // Network/rate-limit errors are non-fatal for navigation.
   }
 }
 
