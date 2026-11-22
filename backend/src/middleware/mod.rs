@@ -36,7 +36,7 @@ pub use expensive_rate_limiter::{categorize_endpoint, extract_identifier, Expens
 pub use field_selection_parameter::{field_selection_middleware, FieldSelectionParameter};
 pub use jwt_token_refresh::JWTTokenRefresh;
 pub use mobile_pagination_endpoints::MobilePaginationEndpoints;
-pub use mobile_request_logging::MobileRequestLogging;
+pub use mobile_request_logging::{MobileLogRecord, MobileRequestLogging};
 pub use network_aware_rpc_client::NetworkAwareRpcClient;
 pub use network_context_middleware::NetworkContextMiddleware;
 pub use network_status_endpoint::NetworkStatusEndpoint;
