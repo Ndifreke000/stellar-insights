@@ -20,7 +20,8 @@ use crate::RotationReason;
 pub const EVENT_SCHEMA_VERSION: u32 = 1;
 
 /// Topic marker identifying a versioned event (filterable by indexers).
-pub const EVENT_SCHEMA_TOPIC: Symbol = symbol_short!("EVT_SCHEMA");
+/// Short symbols are limited to 9 characters.
+pub const EVENT_SCHEMA_TOPIC: Symbol = symbol_short!("EVT_SCHEM");
 
 /// Build the canonical versioned topic tuple for an event.
 ///
