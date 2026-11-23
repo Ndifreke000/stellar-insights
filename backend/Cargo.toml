@@ -124,7 +124,7 @@ async-stream = "0.3"
 # Optional deps for the aws-kms transaction signer backend. Pinned to
 # releases at least a week old; enable with `--features aws-kms`.
 aws-sdk-kms = { version = "=1.129.0", optional = true }
-aws-config = { version = "=1.13.2", optional = true, features = ["behavior-version-latest"] }
+aws-config = { version = "=1.13.3", optional = true, features = ["behavior-version-latest"] }
 # Asset impersonation detection dependencies
 unicode-normalization = "0.1"
 unicode-segmentation = "1.11"
