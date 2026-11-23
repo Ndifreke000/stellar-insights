@@ -15,6 +15,7 @@ use crate::models::retention::{RetentionConfig, RetentionResult, VacuumConfig};
 use crate::state::AppState;
 
 /// Non-blocking retention service.
+#[derive(Clone)]
 pub struct RetentionService {
     config: RetentionConfig,
     vacuum_config: VacuumConfig,

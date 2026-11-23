@@ -11,6 +11,28 @@ use payraider_backend::services::retention::RetentionService;
 use payraider_backend::state::AppState;
 use sqlx::SqlitePool;
 
+/// Build an `AppState` backed by `pool` for tests (mock RPC, in-memory cache).
+fn test_app_state(pool: &SqlitePool) -> AppState {
+    // MultiNetworkConfig needs mainnet URLs even in mock mode.
+    if std::env::var("STELLAR_RPC_URL_MAINNET").is_err() {
+        std::env::set_var("STELLAR_RPC_URL_MAINNET", "https://rpc.example.com");
+    }
+    if std::env::var("STELLAR_HORIZON_URL_MAINNET").is_err() {
+        std::env::set_var("STELLAR_HORIZON_URL_MAINNET", "https://horizon.example.com");
+    }
+    let db = std::sync::Arc::new(payraider_backend::database::Database::new(pool.clone()));
+    let rpc = std::sync::Arc::new(payraider_backend::rpc::StellarRpcClient::new_with_defaults(true));
+    AppState::new(
+        db.clone(),
+        std::sync::Arc::new(payraider_backend::cache::CacheManager::new_in_memory_for_tests(
+            payraider_backend::cache::CacheConfig::default(),
+        )),
+        std::sync::Arc::new(payraider_backend::websocket::WsState::new()),
+        std::sync::Arc::new(payraider_backend::ingestion::DataIngestionService::new(rpc.clone(), db)),
+        rpc,
+    )
+}
+
 /// Create a test database pool with migrations.
 async fn migrated_pool() -> SqlitePool {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
@@ -23,7 +45,7 @@ async fn migrated_pool() -> SqlitePool {
 
 /// Insert sample contract events for testing.
 async fn insert_contract_events(pool: &SqlitePool, count: i64, days_old: i64) {
-    let cutoff = Utc::now() - Duration::days(days_old as u64);
+    let cutoff = Utc::now() - chrono::Duration::days(days_old);
     let cutoff_str = cutoff.format("%Y-%m-%d %H:%M:%S").to_string();
 
     for i in 0..count {
@@ -46,10 +68,10 @@ async fn insert_contract_events(pool: &SqlitePool, count: i64, days_old: i64) {
 
 /// Insert sample corridor metrics for testing.
 async fn insert_corridor_metrics(pool: &SqlitePool, count: i64, days_old: i64) {
-    let cutoff = Utc::now().date_naive() - Duration::days(days_old as u64);
+    let cutoff = Utc::now().date_naive() - chrono::Duration::days(days_old);
 
     for i in 0..count {
-        let date_str = (cutoff - Duration::days(i as i64))
+        let date_str = (cutoff - chrono::Duration::days(i as i64))
             .format("%Y-%m-%d")
             .to_string();
 
@@ -97,22 +119,7 @@ async fn test_retention_deletes_old_events_in_batches() {
 
     // Run retention with small batch size
     let service = RetentionService::new(
-        AppState::new(
-            std::sync::Arc::new(payraider_backend::database::Database::new(pool.clone())),
-            std::sync::Arc::new(payraider_backend::cache::CacheManager::new_in_memory_for_tests(
-                payraider_backend::cache::CacheConfig::default(),
-            )),
-            std::sync::Arc::new(payraider_backend::websocket::WsState::new()),
-            std::sync::Arc::new(payraider_backend::ingestion::DataIngestionService::new(
-                std::sync::Arc::new(payraider_backend::rpc::StellarRpcClient::new(
-                    "https://horizon.stellar.org",
-                )),
-                std::sync::Arc::new(payraider_backend::database::Database::new(pool.clone())),
-            )),
-            std::sync::Arc::new(payraider_backend::rpc::StellarRpcClient::new(
-                "https://horizon.stellar.org",
-            )),
-        ),
+        test_app_state(&pool),
         Some(RetentionConfig {
             default_days: 30,
             table_configs: {
@@ -153,7 +160,7 @@ async fn test_retention_preserves_aggregates() {
     insert_contract_events(&pool, 1000, 60).await;
     
     // Insert recent events (should not be deleted)
-    let recent_cutoff = (Utc::now() - Duration::days(10)).format("%Y-%m-%d %H:%M:%S").to_string();
+    let recent_cutoff = (Utc::now() - chrono::Duration::days(10)).format("%Y-%m-%d %H:%M:%S").to_string();
     for i in 0..100 {
         sqlx::query(
             r"
@@ -190,22 +197,7 @@ async fn test_retention_preserves_aggregates() {
 
     // Run retention
     let service = RetentionService::new(
-        AppState::new(
-            std::sync::Arc::new(payraider_backend::database::Database::new(pool.clone())),
-            std::sync::Arc::new(payraider_backend::cache::CacheManager::new_in_memory_for_tests(
-                payraider_backend::cache::CacheConfig::default(),
-            )),
-            std::sync::Arc::new(payraider_backend::websocket::WsState::new()),
-            std::sync::Arc::new(payraider_backend::ingestion::DataIngestionService::new(
-                std::sync::Arc::new(payraider_backend::rpc::StellarRpcClient::new(
-                    "https://horizon.stellar.org",
-                )),
-                std::sync::Arc::new(payraider_backend::database::Database::new(pool.clone())),
-            )),
-            std::sync::Arc::new(payraider_backend::rpc::StellarRpcClient::new(
-                "https://horizon.stellar.org",
-            )),
-        ),
+        test_app_state(&pool),
         Some(RetentionConfig {
             default_days: 30,
             table_configs: {
@@ -253,7 +245,7 @@ async fn test_corridor_metrics_retention() {
     insert_corridor_metrics(&pool, 500, 400).await;
     
     // Insert recent corridor metrics
-    let recent_cutoff = (Utc::now() - Duration::days(100)).format("%Y-%m-%d").to_string();
+    let recent_cutoff = (Utc::now() - chrono::Duration::days(100)).format("%Y-%m-%d").to_string();
     for i in 0..100 {
         sqlx::query(
             r"
@@ -293,22 +285,7 @@ async fn test_corridor_metrics_retention() {
 
     // Run retention
     let service = RetentionService::new(
-        AppState::new(
-            std::sync::Arc::new(payraider_backend::database::Database::new(pool.clone())),
-            std::sync::Arc::new(payraider_backend::cache::CacheManager::new_in_memory_for_tests(
-                payraider_backend::cache::CacheConfig::default(),
-            )),
-            std::sync::Arc::new(payraider_backend::websocket::WsState::new()),
-            std::sync::Arc::new(payraider_backend::ingestion::DataIngestionService::new(
-                std::sync::Arc::new(payraider_backend::rpc::StellarRpcClient::new(
-                    "https://horizon.stellar.org",
-                )),
-                std::sync::Arc::new(payraider_backend::database::Database::new(pool.clone())),
-            )),
-            std::sync::Arc::new(payraider_backend::rpc::StellarRpcClient::new(
-                "https://horizon.stellar.org",
-            )),
-        ),
+        test_app_state(&pool),
         Some(RetentionConfig {
             default_days: 30,
             table_configs: {
@@ -394,22 +371,7 @@ async fn test_no_blocking_during_retention() {
     
     // Run retention with small batch size to allow concurrent reads
     let service = RetentionService::new(
-        AppState::new(
-            std::sync::Arc::new(payraider_backend::database::Database::new(pool.clone())),
-            std::sync::Arc::new(payraider_backend::cache::CacheManager::new_in_memory_for_tests(
-                payraider_backend::cache::CacheConfig::default(),
-            )),
-            std::sync::Arc::new(payraider_backend::websocket::WsState::new()),
-            std::sync::Arc::new(payraider_backend::ingestion::DataIngestionService::new(
-                std::sync::Arc::new(payraider_backend::rpc::StellarRpcClient::new(
-                    "https://horizon.stellar.org",
-                )),
-                std::sync::Arc::new(payraider_backend::database::Database::new(pool.clone())),
-            )),
-            std::sync::Arc::new(payraider_backend::rpc::StellarRpcClient::new(
-                "https://horizon.stellar.org",
-            )),
-        ),
+        test_app_state(&pool),
         Some(RetentionConfig {
             default_days: 30,
             table_configs: {
@@ -468,22 +430,7 @@ async fn test_batch_size_affects_performance() {
     
     // Test with small batch size
     let service = RetentionService::new(
-        AppState::new(
-            std::sync::Arc::new(payraider_backend::database::Database::new(pool.clone())),
-            std::sync::Arc::new(payraider_backend::cache::CacheManager::new_in_memory_for_tests(
-                payraider_backend::cache::CacheConfig::default(),
-            )),
-            std::sync::Arc::new(payraider_backend::websocket::WsState::new()),
-            std::sync::Arc::new(payraider_backend::ingestion::DataIngestionService::new(
-                std::sync::Arc::new(payraider_backend::rpc::StellarRpcClient::new(
-                    "https://horizon.stellar.org",
-                )),
-                std::sync::Arc::new(payraider_backend::database::Database::new(pool.clone())),
-            )),
-            std::sync::Arc::new(payraider_backend::rpc::StellarRpcClient::new(
-                "https://horizon.stellar.org",
-            )),
-        ),
+        test_app_state(&pool),
         Some(RetentionConfig {
             default_days: 30,
             table_configs: {
