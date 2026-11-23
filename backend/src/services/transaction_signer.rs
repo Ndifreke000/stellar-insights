@@ -73,8 +73,8 @@ pub fn verify_ed25519_signature(
 ) -> Result<()> {
     let verifying_key =
         VerifyingKey::from_bytes(public_key).map_err(|e| anyhow!("Invalid public key: {e}"))?;
-    let sig = Signature::from_slice(signature)
-        .map_err(|e| anyhow!("Invalid signature encoding: {e}"))?;
+    let sig =
+        Signature::from_slice(signature).map_err(|e| anyhow!("Invalid signature encoding: {e}"))?;
     verifying_key
         .verify(message, &sig)
         .map_err(|e| anyhow!("Signature verification failed: {e}"))
@@ -544,7 +544,7 @@ mod aws_kms {
                 .key_id(&self.key_id)
                 .message(aws_sdk_kms::primitives::Blob::new(message.to_vec()))
                 .message_type(aws_sdk_kms::types::MessageType::Raw)
-                .signing_algorithm(aws_sdk_kms::types::SigningAlgorithm::Ed25519Sha512)
+                .signing_algorithm(aws_sdk_kms::types::SigningAlgorithmSpec::Ed25519Sha512)
                 .send()
                 .await
                 .context("KMS Sign failed")?;
@@ -613,9 +613,9 @@ pub async fn signer_from_env() -> Result<Arc<dyn TransactionSigner>> {
                 )
             }
         }
-        other => bail!(
-            "Unknown TX_SIGNER_BACKEND '{other}'; expected 'local', 'gcp-kms', or 'aws-kms'"
-        ),
+        other => {
+            bail!("Unknown TX_SIGNER_BACKEND '{other}'; expected 'local', 'gcp-kms', or 'aws-kms'")
+        }
     }
 }
 
@@ -627,7 +627,10 @@ mod tests {
         // Deterministic test-only seed; not a real account.
         let signing = SigningKey::from_bytes(&[7u8; 32]);
         let pk = stellar_strkey::ed25519::PrivateKey(signing.to_bytes());
-        stellar_strkey::Unredacted(&pk).to_string().as_str().to_owned()
+        stellar_strkey::Unredacted(&pk)
+            .to_string()
+            .as_str()
+            .to_owned()
     }
 
     #[tokio::test]
@@ -662,7 +665,9 @@ mod tests {
         let bare = [3u8; 32];
         assert_eq!(raw_public_key(&bare).unwrap(), bare);
 
-        let mut der = vec![0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00];
+        let mut der = vec![
+            0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00,
+        ];
         der.extend_from_slice(&bare);
         assert_eq!(raw_public_key(&der).unwrap(), bare);
 
