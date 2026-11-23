@@ -17,28 +17,31 @@ use payraider_backend::{
     state::AppState,
 };
 
-/// Mock AppState for testing
-fn mock_app_state() -> AppState {
-    // For testing, we just need the cost_rate_limiter field
+/// Mock AppState for testing (in-memory SQLite, mock RPC).
+async fn mock_app_state() -> AppState {
+    let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+    test_app_state(&pool)
+}
+
+/// Build an `AppState` backed by `pool` for tests (mock RPC, in-memory cache).
+fn test_app_state(pool: &sqlx::SqlitePool) -> AppState {
+    // MultiNetworkConfig needs mainnet URLs even in mock mode.
+    if std::env::var("STELLAR_RPC_URL_MAINNET").is_err() {
+        std::env::set_var("STELLAR_RPC_URL_MAINNET", "https://rpc.example.com");
+    }
+    if std::env::var("STELLAR_HORIZON_URL_MAINNET").is_err() {
+        std::env::set_var("STELLAR_HORIZON_URL_MAINNET", "https://horizon.example.com");
+    }
+    let db = std::sync::Arc::new(payraider_backend::database::Database::new(pool.clone()));
+    let rpc = std::sync::Arc::new(payraider_backend::rpc::StellarRpcClient::new_with_defaults(true));
     AppState::new(
-        std::sync::Arc::new(payraider_backend::database::Database::new(
-            sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap(),
-        )),
+        db.clone(),
         std::sync::Arc::new(payraider_backend::cache::CacheManager::new_in_memory_for_tests(
             payraider_backend::cache::CacheConfig::default(),
         )),
         std::sync::Arc::new(payraider_backend::websocket::WsState::new()),
-        std::sync::Arc::new(payraider_backend::ingestion::DataIngestionService::new(
-            std::sync::Arc::new(payraider_backend::rpc::StellarRpcClient::new(
-                "https://horizon.stellar.org",
-            )),
-            std::sync::Arc::new(payraider_backend::database::Database::new(
-                sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap(),
-            )),
-        )),
-        std::sync::Arc::new(payraider_backend::rpc::StellarRpcClient::new(
-            "https://horizon.stellar.org",
-        )),
+        std::sync::Arc::new(payraider_backend::ingestion::DataIngestionService::new(rpc.clone(), db)),
+        rpc,
     )
 }
 
@@ -145,7 +148,7 @@ async fn test_client_tier() {
 #[tokio::test]
 async fn test_budget_insufficient_error_response() {
     let limiter = CostRateLimiter::new();
-    let app_state = mock_app_state();
+    let _app_state = mock_app_state().await;
     
     // Exhaust anonymous budget (100 units)
     let result = limiter
