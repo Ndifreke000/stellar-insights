@@ -374,11 +374,98 @@ fn bench_concurrent_writes(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_db_batch_operations(c: &mut Criterion) {
+    let rt = Runtime::new().unwrap();
+    let pool = rt.block_on(setup_test_db());
+
+    let mut group = c.benchmark_group("db_batch");
+
+    for batch_size in [10, 50, 100].iter() {
+        group.bench_with_input(
+            BenchmarkId::from_parameter(format!("batch_insert_{}", batch_size)),
+            batch_size,
+            |b, &batch_size| {
+                b.to_async(&rt).iter(|| async {
+                    let mut tx = pool.begin().await.unwrap();
+                    for i in 0..batch_size {
+                        sqlx::query(
+                            "INSERT INTO corridors (corridor_key, asset_a_code, asset_a_issuer, asset_b_code, asset_b_issuer)
+                             VALUES (?, ?, ?, ?, ?)"
+                        )
+                        .bind(format!("batch_corridor_{}_{}", batch_size, i))
+                        .bind("USDC")
+                        .bind("BATCH_ISSUER")
+                        .bind("EURC")
+                        .bind("BATCH_ISSUER_2")
+                        .execute(&mut *tx)
+                        .await
+                        .unwrap();
+                    }
+                    tx.commit().await.unwrap();
+                });
+            },
+        );
+    }
+
+    group.finish();
+}
+
+fn bench_db_transaction_operations(c: &mut Criterion) {
+    let rt = Runtime::new().unwrap();
+    let pool = rt.block_on(setup_test_db());
+
+    let mut group = c.benchmark_group("db_transaction");
+    group.throughput(Throughput::Elements(1));
+
+    group.bench_function("transaction_read_only", |b| {
+        b.to_async(&rt).iter(|| async {
+            let mut tx = pool.begin().await.unwrap();
+            let result = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM corridors")
+                .fetch_one(&mut *tx)
+                .await
+                .unwrap();
+            tx.rollback().await.unwrap();
+            result
+        });
+    });
+
+    group.bench_function("transaction_write", |b| {
+        b.to_async(&rt).iter(|| async {
+            let mut tx = pool.begin().await.unwrap();
+            sqlx::query("UPDATE anchors SET reliability_score = ? WHERE id = ?")
+                .bind(black_box(0.99))
+                .bind(black_box("anchor_1"))
+                .execute(&mut *tx)
+                .await
+                .unwrap();
+            tx.commit().await.unwrap();
+        });
+    });
+
+    group.finish();
+}
+
+fn bench_db_pool_metrics(c: &mut Criterion) {
+    let rt = Runtime::new().unwrap();
+    let pool = rt.block_on(setup_test_db());
+
+    let mut group = c.benchmark_group("db_pool_metrics");
+
+    group.bench_function("get_pool_size", |b| b.iter(|| black_box(&pool).size()));
+
+    group.bench_function("get_pool_idle", |b| b.iter(|| black_box(&pool).num_idle()));
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_db_connection,
     bench_db_read_operations,
     bench_db_write_operations,
+    bench_db_batch_operations,
+    bench_db_transaction_operations,
+    bench_db_pool_metrics,
     bench_concurrent_writes
 );
 criterion_main!(benches);
