@@ -132,6 +132,9 @@ pub struct ContractEvent {
     pub contract_id: String,
     /// Event type/topic
     pub event_type: String,
+    /// Remaining event topics after the event name, as decoded strings.
+    #[serde(default)]
+    pub topics: Vec<String>,
     /// Event data (JSON-encoded)
     pub data: serde_json::Value,
     /// Timestamp when event occurred
@@ -356,6 +359,7 @@ mod tests {
             transaction_hash: "abc123".to_string(),
             contract_id: "CONTRACT_A".to_string(),
             event_type: "transfer".to_string(),
+            topics: Vec::new(),
             data: serde_json::json!({ "amount": 100 }),
             timestamp: chrono::Utc::now(),
             network: "testnet".to_string(),

@@ -131,6 +131,7 @@ impl EventStorage {
                         transaction_hash: tx_hash,
                         contract_id,
                         event_type,
+                        topics: Vec::new(),
                         data,
                         timestamp,
                         network,

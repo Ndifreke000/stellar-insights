@@ -522,6 +522,7 @@ mod tests {
             transaction_hash: "tx".into(),
             contract_id: "c".into(),
             event_type: "t".into(),
+            topics: Vec::new(),
             data: serde_json::json!({}),
             timestamp: Utc::now(),
             network: "mainnet".into(),

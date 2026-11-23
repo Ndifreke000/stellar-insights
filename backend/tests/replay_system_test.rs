@@ -100,6 +100,7 @@ fn create_test_events(count: usize, start_ledger: u64) -> Vec<ContractEvent> {
                 transaction_hash: format!("tx-{}", i),
                 contract_id: "test-contract".to_string(),
                 event_type: "snapshot_submitted".to_string(),
+                topics: Vec::new(),
                 data: serde_json::json!({
                     "epoch": ledger,
                     "hash": format!("hash-{}", i),
