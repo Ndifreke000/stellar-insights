@@ -83,7 +83,7 @@ pub async fn get_analytics_overview(State(db): State<Arc<Database>>) -> Json<Api
 pub const DEFAULT_LOG_RETENTION_DAYS: i64 = 30;
 
 /// A single sampled, redacted request log entry owned by an API key.
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct RequestLogEntry {
     pub id: i64,
     pub api_key_id: String,
@@ -95,7 +95,7 @@ pub struct RequestLogEntry {
 }
 
 /// Aggregated usage for a single route.
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct RouteAggregate {
     pub route: String,
     pub method: String,
@@ -105,7 +105,7 @@ pub struct RouteAggregate {
 }
 
 /// Aggregated usage for a single status code.
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct StatusAggregate {
     pub status_code: i64,
     pub count: i64,
@@ -127,14 +127,14 @@ pub struct RequestLogFilters {
 }
 
 /// Response payload for the per-key request log listing.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 pub struct RequestLogsResponse {
     pub api_key_id: String,
     pub logs: Vec<RequestLogEntry>,
 }
 
 /// Response payload for the per-key aggregates.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 pub struct RequestLogAggregates {
     pub api_key_id: String,
     pub by_route: Vec<RouteAggregate>,
@@ -320,10 +320,7 @@ pub async fn get_request_log_aggregates(
 
 /// Prune sampled request logs older than the retention window. Returns the
 /// number of rows removed. Safe to call periodically (e.g. from a cron task).
-pub async fn prune_request_logs(
-    db: &Database,
-    retention_days: i64,
-) -> Result<u64, sqlx::Error> {
+pub async fn prune_request_logs(db: &Database, retention_days: i64) -> Result<u64, sqlx::Error> {
     let days = retention_days.max(1);
     let result = sqlx::query(
         "DELETE FROM api_request_logs
