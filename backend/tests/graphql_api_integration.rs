@@ -174,8 +174,8 @@ async fn create_test_db() -> SqlitePool {
 /// Build a test schema
 async fn create_test_schema() -> graphql::AppSchema {
     let pool = Arc::new(create_test_db().await);
-    let (broadcast_tx, _) = broadcast::channel::<String>(10);
-    graphql::build_schema(pool, broadcast_tx)
+    let ws_state = Arc::new(payraider_backend::websocket::WsState::new());
+    graphql::build_schema(pool, ws_state)
 }
 
 // ── Query Tests ───────────────────────────────────────────────────────────────

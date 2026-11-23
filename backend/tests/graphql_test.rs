@@ -171,8 +171,8 @@ async fn create_test_db() -> SqlitePool {
 /// Build a test schema with in-memory database
 async fn create_test_schema() -> payraider_backend::graphql::AppSchema {
     let pool = Arc::new(create_test_db().await);
-    let (broadcast_tx, _) = broadcast::channel::<String>(10);
-    payraider_backend::graphql::build_schema(pool, broadcast_tx)
+    let ws_state = Arc::new(payraider_backend::websocket::WsState::new());
+    payraider_backend::graphql::build_schema(pool, ws_state)
 }
 
 #[tokio::test]
