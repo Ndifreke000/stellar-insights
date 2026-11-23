@@ -354,10 +354,10 @@ pub fn compute_metrics_from_payments(payments: &[PaymentRecord]) -> Vec<Corridor
         for p in &corridor_payments {
             if p.successful {
                 successful += 1;
-                volume += p.amount_usd.max(0.0);
-                if let Some(ms) = p.settlement_latency_ms {
+                volume += p.amount.max(0.0);
+                if let Some(ms) = p.settlement_latency_ms() {
                     if ms >= 0 {
-                        latencies.push(i64::from(ms));
+                        latencies.push(ms);
                     }
                 }
             } else {
@@ -400,6 +400,66 @@ pub fn compute_metrics_from_payments(payments: &[PaymentRecord]) -> Vec<Corridor
     }
 
     results
+}
+
+/// Filter payments by time window and compute metrics
+#[must_use]
+pub fn compute_metrics_by_window(
+    payments: &[PaymentRecord],
+    start: chrono::DateTime<chrono::Utc>,
+    end: chrono::DateTime<chrono::Utc>,
+) -> Vec<CorridorMetrics> {
+    let filtered: Vec<PaymentRecord> = payments
+        .iter()
+        .filter(|p| p.timestamp >= start && p.timestamp <= end)
+        .cloned()
+        .collect();
+
+    compute_metrics_from_payments(&filtered)
+}
+
+/// Excludes payments that touch a merged Stellar account from corridor stats.
+///
+/// Why this matters (#2664): once an account is merged away via
+/// `account_merge`, it no longer represents an independent counterparty —
+/// its source identity has vanished and its destination side received a
+/// one-off balance dump that has nothing to do with normal corridor flow.
+/// Counting those payments in `success_rate`/`volume_usd` distorts the
+/// corridor's real health (e.g. a burst of merges into one destination
+/// account can make a corridor look far busier or more reliable than it
+/// actually is).
+///
+/// `merged_accounts` should contain every account that appears as either
+/// `source_account` or `destination_account` on an `account_merges` row
+/// (see `AccountMergeDetector::get_merged_account_set`). A payment is
+/// dropped if *either* side is in that set.
+///
+/// Returns the retained payments plus how many were excluded, so callers
+/// can log/alert on unexpectedly high exclusion counts.
+#[must_use]
+pub fn filter_merged_accounts(
+    payments: &[PaymentRecord],
+    merged_accounts: &std::collections::HashSet<String>,
+) -> (Vec<PaymentRecord>, usize) {
+    if merged_accounts.is_empty() {
+        return (payments.to_vec(), 0);
+    }
+
+    let mut excluded = 0usize;
+    let retained: Vec<PaymentRecord> = payments
+        .iter()
+        .filter(|p| {
+            let touches_merged = merged_accounts.contains(&p.source_account)
+                || merged_accounts.contains(&p.destination_account);
+            if touches_merged {
+                excluded += 1;
+            }
+            !touches_merged
+        })
+        .cloned()
+        .collect();
+
+    (retained, excluded)
 }
 
 #[cfg(test)]
@@ -447,5 +507,370 @@ mod privacy_tests {
         assert!(!budget.try_charge(-1.0));
         assert!(!budget.try_charge(f64::INFINITY));
         assert_eq!(budget.remaining(), 1.0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::corridor::PaymentRecord;
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    fn create_test_payment_record(
+        source_code: &str,
+        dest_code: &str,
+        amount: f64,
+        successful: bool,
+        timestamp: chrono::DateTime<chrono::Utc>,
+    ) -> PaymentRecord {
+        PaymentRecord {
+            id: Uuid::new_v4(),
+            source_asset_code: source_code.to_string(),
+            source_asset_issuer: "issuer1".to_string(),
+            destination_asset_code: dest_code.to_string(),
+            destination_asset_issuer: "issuer2".to_string(),
+            amount,
+            successful,
+            timestamp,
+            submission_time: None,
+            confirmation_time: None,
+            source_account: "GSOURCETESTACCOUNT".to_string(),
+            destination_account: "GDESTTESTACCOUNT".to_string(),
+        }
+    }
+
+    fn create_test_payment_with_latency(
+        source_code: &str,
+        dest_code: &str,
+        amount: f64,
+        successful: bool,
+        timestamp: chrono::DateTime<chrono::Utc>,
+        latency_ms: i64,
+    ) -> PaymentRecord {
+        let submission = timestamp - chrono::Duration::milliseconds(latency_ms);
+        PaymentRecord {
+            id: Uuid::new_v4(),
+            source_asset_code: source_code.to_string(),
+            source_asset_issuer: "issuer1".to_string(),
+            destination_asset_code: dest_code.to_string(),
+            destination_asset_issuer: "issuer2".to_string(),
+            amount,
+            successful,
+            timestamp,
+            submission_time: Some(submission),
+            confirmation_time: Some(timestamp),
+            source_account: "GSOURCETESTACCOUNT".to_string(),
+            destination_account: "GDESTTESTACCOUNT".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_compute_metrics_from_payments() {
+        let payments = vec![
+            create_test_payment_record("USDC", "EURC", 100.0, true, Utc::now()),
+            create_test_payment_record("USDC", "EURC", 50.0, true, Utc::now()),
+            create_test_payment_record("BTC", "ETH", 10.0, false, Utc::now()),
+        ];
+
+        let metrics = compute_metrics_from_payments(&payments);
+        assert_eq!(metrics.len(), 2);
+
+        // Find USDC -> EURC metrics
+        let usdc_metrics = metrics
+            .iter()
+            .find(|m| m.source_asset_code == "EURC" || m.source_asset_code == "USDC") // Normalized
+            .expect("Should find USDC/EURC metrics");
+
+        assert_eq!(usdc_metrics.total_transactions, 2);
+        assert_eq!(usdc_metrics.successful_transactions, 2);
+        assert_eq!(usdc_metrics.success_rate, 100.0);
+        assert_eq!(usdc_metrics.volume_usd, 150.0);
+    }
+
+    #[test]
+    fn test_compute_metrics_by_window() {
+        let now = Utc::now();
+        let yesterday = now - chrono::Duration::days(1);
+        let two_days_ago = now - chrono::Duration::days(2);
+
+        let payments = vec![
+            create_test_payment_record("USDC", "EURC", 100.0, true, now),
+            create_test_payment_record("USDC", "EURC", 50.0, true, yesterday), // Should include
+            create_test_payment_record("USDC", "EURC", 50.0, true, two_days_ago), // Should exclude
+        ];
+
+        // Window: 30 hours ago to now (covers yesterday and today, excludes 2 days ago)
+        let start = now - chrono::Duration::hours(30);
+        let end = now + chrono::Duration::seconds(10); // buffer
+
+        let metrics = compute_metrics_by_window(&payments, start, end);
+        assert_eq!(metrics.len(), 1);
+        assert_eq!(metrics[0].total_transactions, 2);
+    }
+
+    #[test]
+    fn test_compute_corridor_metrics_basic() {
+        let txns = vec![
+            CorridorPayment {
+                successful: true,
+                settlement_latency_ms: Some(1000),
+                amount_usd: 100.0,
+            },
+            CorridorPayment {
+                successful: true,
+                settlement_latency_ms: Some(3000),
+                amount_usd: 200.0,
+            },
+            CorridorPayment {
+                successful: false,
+                settlement_latency_ms: None,
+                amount_usd: 50.0,
+            },
+        ];
+
+        let order_book = OrderBookSnapshot {
+            bids: vec![
+                OrderBookEntry {
+                    price: 99.0,
+                    amount_usd: 150.0,
+                },
+                OrderBookEntry {
+                    price: 98.5,
+                    amount_usd: 100.0,
+                },
+            ],
+            asks: vec![
+                OrderBookEntry {
+                    price: 101.0,
+                    amount_usd: 200.0,
+                },
+                OrderBookEntry {
+                    price: 102.0,
+                    amount_usd: 50.0,
+                },
+            ],
+        };
+
+        let metrics = compute_corridor_metrics(&txns, Some(&order_book), 1.0); // 1% slippage
+        assert_eq!(metrics.total_transactions, 3);
+        assert_eq!(metrics.successful_transactions, 2);
+        assert_eq!(metrics.failed_transactions, 1);
+        assert_eq!(metrics.success_rate, (2.0 / 3.0) * 100.0);
+        assert_eq!(metrics.avg_settlement_latency_ms, Some(2000));
+        assert_eq!(metrics.median_settlement_latency_ms, Some(2000)); // Median of [1000, 3000]
+        assert!(metrics.liquidity_depth_usd > 0.0); // computed from order book
+    }
+
+    #[test]
+    fn test_compute_corridor_metrics_empty() {
+        let metrics = compute_corridor_metrics(&[], None, 1.0);
+        assert_eq!(metrics.total_transactions, 0);
+        assert_eq!(metrics.success_rate, 0.0);
+        assert_eq!(metrics.avg_settlement_latency_ms, None);
+        assert_eq!(metrics.median_settlement_latency_ms, None);
+        assert_eq!(metrics.liquidity_depth_usd, 0.0);
+    }
+
+    #[test]
+    fn test_compute_corridor_metrics_all_failed() {
+        let txns = vec![
+            CorridorPayment {
+                successful: false,
+                settlement_latency_ms: None,
+                amount_usd: 10.0,
+            },
+            CorridorPayment {
+                successful: false,
+                settlement_latency_ms: None,
+                amount_usd: 20.0,
+            },
+        ];
+        let metrics = compute_corridor_metrics(&txns, None, 1.0);
+        assert_eq!(metrics.success_rate, 0.0);
+        assert_eq!(metrics.avg_settlement_latency_ms, None);
+        assert_eq!(metrics.median_settlement_latency_ms, None);
+        assert_eq!(metrics.liquidity_depth_usd, 0.0);
+    }
+
+    #[test]
+    fn test_median_latency_from_payments() {
+        let now = Utc::now();
+        let payments = vec![
+            create_test_payment_with_latency("USDC", "EURC", 100.0, true, now, 1000),
+            create_test_payment_with_latency("USDC", "EURC", 200.0, true, now, 2000),
+            create_test_payment_with_latency("USDC", "EURC", 150.0, true, now, 3000),
+        ];
+
+        let metrics = compute_metrics_from_payments(&payments);
+        assert_eq!(metrics.len(), 1);
+
+        let m = &metrics[0];
+        assert_eq!(m.total_transactions, 3);
+        assert_eq!(m.successful_transactions, 3);
+        assert_eq!(m.avg_settlement_latency_ms, Some(2000)); // (1000 + 2000 + 3000) / 3
+        assert_eq!(m.median_settlement_latency_ms, Some(2000)); // Median of [1000, 2000, 3000]
+    }
+
+    #[test]
+    fn test_median_latency_even_count() {
+        let now = Utc::now();
+        let payments = vec![
+            create_test_payment_with_latency("USDC", "EURC", 100.0, true, now, 1000),
+            create_test_payment_with_latency("USDC", "EURC", 100.0, true, now, 2000),
+            create_test_payment_with_latency("USDC", "EURC", 100.0, true, now, 3000),
+            create_test_payment_with_latency("USDC", "EURC", 100.0, true, now, 4000),
+        ];
+
+        let metrics = compute_metrics_from_payments(&payments);
+        assert_eq!(metrics.len(), 1);
+
+        let m = &metrics[0];
+        assert_eq!(m.avg_settlement_latency_ms, Some(2500)); // (1000 + 2000 + 3000 + 4000) / 4
+        assert_eq!(m.median_settlement_latency_ms, Some(2500)); // (2000 + 3000) / 2
+    }
+
+    #[test]
+    fn test_median_latency_with_negative_values() {
+        let now = Utc::now();
+        let payments = vec![
+            create_test_payment_with_latency("USDC", "EURC", 100.0, true, now, 1000),
+            create_test_payment_with_latency("USDC", "EURC", 100.0, true, now, -500), // Should be filtered
+            create_test_payment_with_latency("USDC", "EURC", 100.0, true, now, 3000),
+        ];
+
+        let metrics = compute_metrics_from_payments(&payments);
+        assert_eq!(metrics.len(), 1);
+
+        let m = &metrics[0];
+        // Only 1000 and 3000 should be considered
+        assert_eq!(m.avg_settlement_latency_ms, Some(2000)); // (1000 + 3000) / 2
+        assert_eq!(m.median_settlement_latency_ms, Some(2000)); // Median of [1000, 3000]
+    }
+
+    fn payment_with_accounts(source: &str, destination: &str, amount: f64) -> PaymentRecord {
+        let mut p = create_test_payment_record("USDC", "EURC", amount, true, Utc::now());
+        p.source_account = source.to_string();
+        p.destination_account = destination.to_string();
+        p
+    }
+
+    /// Fixture mirroring issue #2664: a corridor has three normal payments
+    /// plus one that landed in an account right before it merged away. The
+    /// merged destination should be excluded so it can't inflate
+    /// `volume_usd`/`success_rate` for the corridor.
+    #[test]
+    fn test_filter_merged_accounts_excludes_merge_fixture() {
+        let normal_a = payment_with_accounts("GALICE", "GBOB", 100.0);
+        let normal_b = payment_with_accounts("GALICE", "GBOB", 200.0);
+        let merged_destination = payment_with_accounts("GALICE", "GMERGEDAWAY", 5_000.0);
+        let merged_source = payment_with_accounts("GMERGEDAWAY", "GCAROL", 10.0);
+
+        let payments = vec![
+            normal_a.clone(),
+            normal_b.clone(),
+            merged_destination,
+            merged_source,
+        ];
+
+        let mut merged_accounts = std::collections::HashSet::new();
+        merged_accounts.insert("GMERGEDAWAY".to_string());
+
+        let (retained, excluded) = filter_merged_accounts(&payments, &merged_accounts);
+
+        assert_eq!(excluded, 2);
+        assert_eq!(retained.len(), 2);
+        assert!(retained
+            .iter()
+            .all(|p| p.source_account != "GMERGEDAWAY" && p.destination_account != "GMERGEDAWAY"));
+
+        // Confirms the distortion the issue describes: without filtering, the
+        // 5,000 XLM merge dump would dominate corridor volume.
+        let metrics_unfiltered = compute_metrics_from_payments(&payments);
+        let metrics_filtered = compute_metrics_from_payments(&retained);
+        assert!(metrics_unfiltered[0].volume_usd > metrics_filtered[0].volume_usd);
+        assert!((metrics_filtered[0].volume_usd - 300.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_filter_merged_accounts_noop_when_set_empty() {
+        let payments = vec![payment_with_accounts("GALICE", "GBOB", 100.0)];
+        let (retained, excluded) =
+            filter_merged_accounts(&payments, &std::collections::HashSet::new());
+        assert_eq!(excluded, 0);
+        assert_eq!(retained.len(), 1);
+    }
+
+    // ── #2667: AMM pool depth combined with order book depth ───────────────
+
+    #[test]
+    fn test_compute_amm_pool_depth_zero_without_liquidity() {
+        let empty_pool = AmmPoolReserves {
+            reserve_a_usd: 0.0,
+            reserve_b_usd: 0.0,
+        };
+        assert_eq!(compute_amm_pool_depth(&empty_pool, 1.0), 0.0);
+    }
+
+    #[test]
+    fn test_compute_amm_pool_depth_scales_with_slippage_tolerance() {
+        let pool = AmmPoolReserves {
+            reserve_a_usd: 100_000.0,
+            reserve_b_usd: 100_000.0,
+        };
+
+        let tight = compute_amm_pool_depth(&pool, 0.1);
+        let loose = compute_amm_pool_depth(&pool, 2.0);
+
+        // A larger slippage tolerance means the trade can move the price
+        // further, so more of the pool's reserves are usable.
+        assert!(loose > tight);
+
+        // At 1% slippage: dx = 0.01 * 100_000 / 0.99 per side, summed over
+        // both sides.
+        let one_pct = compute_amm_pool_depth(&pool, 1.0);
+        let expected_side = 0.01 * 100_000.0 / 0.99;
+        assert!((one_pct - 2.0 * expected_side).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_compute_combined_liquidity_depth_adds_amm_to_order_book() {
+        let order_book = OrderBookSnapshot {
+            bids: vec![OrderBookEntry {
+                price: 99.0,
+                amount_usd: 1_000.0,
+            }],
+            asks: vec![OrderBookEntry {
+                price: 101.0,
+                amount_usd: 1_000.0,
+            }],
+        };
+        let order_book_only = compute_combined_liquidity_depth(Some(&order_book), &[], 5.0);
+        assert!(order_book_only > 0.0);
+
+        let pool = AmmPoolReserves {
+            reserve_a_usd: 50_000.0,
+            reserve_b_usd: 50_000.0,
+        };
+        let combined = compute_combined_liquidity_depth(Some(&order_book), &[pool], 5.0);
+
+        // A pool with real depth must make the combined figure strictly
+        // larger than the order book alone — this is the scenario the issue
+        // asks to be tested ("Test where AMM provides depth").
+        assert!(combined > order_book_only);
+        assert!((combined - (order_book_only + compute_amm_pool_depth(&pool, 5.0))).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_compute_combined_liquidity_depth_amm_only() {
+        // No order book at all (e.g. an asset with no DEX offers) but a
+        // funded AMM pool should still produce a positive liquidity figure
+        // instead of silently reporting zero liquidity.
+        let pool = AmmPoolReserves {
+            reserve_a_usd: 20_000.0,
+            reserve_b_usd: 20_000.0,
+        };
+        let depth = compute_combined_liquidity_depth(None, &[pool], 1.0);
+        assert!(depth > 0.0);
     }
 }
