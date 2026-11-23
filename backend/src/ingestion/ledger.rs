@@ -80,9 +80,10 @@ impl LedgerSource for HorizonLedgerSource {
     async fn fetch_ledgers(&self, start: u64, limit: u32) -> Result<Vec<NormalisedLedger>> {
         let ledgers = self
             .rpc_client
-            .get_ledgers(start, limit)
+            .fetch_ledgers(Some(start), limit, None)
             .await
-            .context("horizon: failed to fetch ledgers")?;
+            .context("horizon: failed to fetch ledgers")?
+            .ledgers;
         Ok(ledgers.into_iter().map(normalise_rpc_ledger).collect())
     }
 }
@@ -110,9 +111,10 @@ impl LedgerSource for RpcLedgerSource {
     async fn fetch_ledgers(&self, start: u64, limit: u32) -> Result<Vec<NormalisedLedger>> {
         let ledgers = self
             .rpc_client
-            .get_ledgers(start, limit)
+            .fetch_ledgers(Some(start), limit, None)
             .await
-            .context("rpc: failed to fetch ledgers via getLedgers")?;
+            .context("rpc: failed to fetch ledgers via getLedgers")?
+            .ledgers;
         Ok(ledgers.into_iter().map(normalise_rpc_ledger).collect())
     }
 }
@@ -120,20 +122,36 @@ impl LedgerSource for RpcLedgerSource {
 /// Decode an [`RpcLedger`] (already XDR-decoded by the RPC client) into the
 /// source-independent [`NormalisedLedger`] shape.
 fn normalise_rpc_ledger(ledger: RpcLedger) -> NormalisedLedger {
+    use stellar_xdr::curr::{LedgerHeaderHistoryEntry, Limits, ReadXdr};
+
+    // `ledgerCloseTime` is a unix timestamp in seconds, sent as a string.
+    let close_time = ledger.ledger_close_time.parse::<i64>().unwrap_or_default();
+    let header = ledger
+        .header_xdr
+        .as_deref()
+        .and_then(|xdr| LedgerHeaderHistoryEntry::from_xdr_base64(xdr, Limits::none()).ok())
+        .map(|entry| entry.header);
+
+    // Transaction and operation counts live in the ledger metadata, which this
+    // path does not decode, so they are reported as zero.
     NormalisedLedger {
         sequence: ledger.sequence,
         hash: ledger.hash,
-        close_time: ledger.close_time,
-        transaction_count: ledger.transaction_count,
-        operation_count: ledger.operation_count,
-        successful_transaction_count: ledger.successful_transaction_count,
-        failed_transaction_count: ledger.failed_transaction_count,
-        total_coins: ledger.total_coins,
-        fee_pool: ledger.fee_pool,
-        base_fee: ledger.base_fee,
-        base_reserve: ledger.base_reserve,
-        max_tx_set_size: ledger.max_tx_set_size,
-        protocol_version: ledger.protocol_version,
+        close_time,
+        transaction_count: 0,
+        operation_count: 0,
+        successful_transaction_count: 0,
+        failed_transaction_count: 0,
+        total_coins: header
+            .as_ref()
+            .map_or_else(String::new, |h| h.total_coins.to_string()),
+        fee_pool: header
+            .as_ref()
+            .map_or_else(String::new, |h| h.fee_pool.to_string()),
+        base_fee: header.as_ref().map_or(0, |h| h.base_fee),
+        base_reserve: header.as_ref().map_or(0, |h| h.base_reserve),
+        max_tx_set_size: header.as_ref().map_or(0, |h| h.max_tx_set_size),
+        protocol_version: header.as_ref().map_or(0, |h| h.ledger_version),
     }
 }
 
@@ -154,7 +172,10 @@ impl LedgerSourceKind {
             "rpc" | "rpc-getledgers" | "getledgers" => Self::RpcGetLedgers,
             "horizon" | "" => Self::Horizon,
             other => {
-                warn!(value = other, "unknown ledger source, defaulting to horizon");
+                warn!(
+                    value = other,
+                    "unknown ledger source, defaulting to horizon"
+                );
                 Self::Horizon
             }
         }
