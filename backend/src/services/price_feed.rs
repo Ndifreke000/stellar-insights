@@ -667,27 +667,6 @@ impl PriceFeedClient {
         Ok(aggregated.price)
     }
 
-        // Try to return stale cache data as fallback, but only if it is not
-        // itself stale — otherwise the price is unknown.
-        let cache = self.cache.read().await;
-        if let Some(cached) = cache.get(stellar_asset) {
-            if self.is_stale(cached) {
-                warn!(
-                    "Only stale cached price available for {}, treating as unknown",
-                    stellar_asset
-                );
-                anyhow::bail!("Price for {stellar_asset} is stale");
-            }
-            warn!(
-                "Using cached price for {} after fetch failure: ${}",
-                stellar_asset, cached.price_usd
-            );
-            return Ok(cached.price_usd);
-        }
-
-        anyhow::bail!("Failed to fetch price for {stellar_asset} from all providers")
-    }
-
     /// Get price for a Stellar asset, returning `None` when the price is
     /// unknown (missing mapping, all providers failed, or stale).
     ///
