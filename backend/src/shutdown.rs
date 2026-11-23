@@ -388,6 +388,112 @@ pub async fn shutdown_background_tasks(
     }
 }
 
+/// Gracefully close database connection pool
+///
+/// Attempts to close the database pool within the timeout period.
+pub async fn shutdown_database(pool: sqlx::SqlitePool, timeout_duration: Duration) {
+    info!("Closing database connections");
+
+    let close_future = async {
+        pool.close().await;
+        info!("Database connections closed successfully");
+    };
+
+    if let Ok(()) = timeout(timeout_duration, close_future).await {
+        info!("Database closed within timeout")
+    } else {
+        warn!(
+            "Database did not close within {:?}, proceeding with shutdown",
+            timeout_duration
+        )
+    }
+}
+
+/// Flush Redis cache and close connections gracefully
+///
+/// Ensures all pending Redis operations are completed and connections are closed properly.
+pub async fn flush_cache(
+    cache: std::sync::Arc<crate::cache::CacheManager>,
+    timeout_duration: Duration,
+) {
+    info!("Flushing cache and closing Redis connections");
+
+    let flush_future = async {
+        // Log cache statistics before shutdown
+        let stats = cache.get_stats();
+        info!(
+            "Cache statistics - Hits: {}, Misses: {}, Invalidations: {}, Hit Rate: {:.2}%",
+            stats.hits,
+            stats.misses,
+            stats.invalidations,
+            stats.hit_rate()
+        );
+
+        // Close Redis connection gracefully
+        if let Err(e) = cache.close().await {
+            warn!("Error closing cache connections: {}", e);
+        } else {
+            info!("Cache connections closed successfully");
+        }
+    };
+
+    if let Ok(()) = timeout(timeout_duration, flush_future).await {
+        info!("Cache flush completed within timeout")
+    } else {
+        warn!(
+            "Cache flush did not complete within {:?}, proceeding with shutdown",
+            timeout_duration
+        )
+    }
+}
+
+/// Close WebSocket connections gracefully
+///
+/// Notifies all connected WebSocket clients about the shutdown and closes connections.
+pub async fn shutdown_websockets(
+    ws_state: std::sync::Arc<crate::websocket::WsState>,
+    timeout_duration: Duration,
+) {
+    info!(
+        "Closing {} WebSocket connections",
+        ws_state.connection_count()
+    );
+
+    let close_future = async {
+        // Notify only this instance's clients — broadcasting through Redis would
+        // tell clients connected to healthy replicas that *their* server is going away.
+        ws_state.broadcast_local(crate::websocket::WsMessage::ServerShutdown {
+            message: "Server is shutting down gracefully".to_string(),
+        });
+
+        // Give clients a moment to receive the message
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // Close all connections
+        ws_state.close_all_connections();
+
+        info!("All WebSocket connections closed");
+    };
+
+    if let Ok(()) = timeout(timeout_duration, close_future).await {
+        info!("WebSocket shutdown completed within timeout")
+    } else {
+        warn!(
+            "WebSocket shutdown did not complete within {:?}, proceeding with shutdown",
+            timeout_duration
+        )
+    }
+}
+
+/// Log shutdown statistics and final state
+pub fn log_shutdown_summary(start_time: std::time::Instant) {
+    let elapsed = start_time.elapsed();
+    info!(
+        "Graceful shutdown completed in {:.2}s",
+        elapsed.as_secs_f64()
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
