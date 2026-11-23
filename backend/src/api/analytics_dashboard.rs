@@ -435,6 +435,12 @@ fn generate_network_stats(
     })
 }
 
+pub fn routes(app_state: AppState) -> Router {
+    Router::new()
+        .route("/dashboard", get(analytics_dashboard))
+        .with_state(app_state)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
