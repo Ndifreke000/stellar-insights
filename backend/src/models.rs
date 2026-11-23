@@ -103,7 +103,9 @@ impl Amount {
         for _ in frac_part.len()..7 {
             frac_val *= 10;
         }
-        let total = int_val.checked_mul(STROOPS_PER_UNIT)?.checked_add(frac_val)?;
+        let total = int_val
+            .checked_mul(STROOPS_PER_UNIT)?
+            .checked_add(frac_val)?;
         Some(Self(if negative { -total } else { total }))
     }
 
@@ -637,6 +639,33 @@ pub struct TrustlineSnapshot {
     pub unauthorized_trustlines: i64,
     pub total_supply: f64,
     pub snapshot_at: DateTime<Utc>,
+}
+
+/// Retention of one weekly trustline cohort `week_number` weeks after it formed (#2916).
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct CohortWeekRetention {
+    pub week_number: i32,
+    pub active_accounts: i64,
+    pub retention_rate: f64,
+    pub churn_rate: f64,
+}
+
+/// Accounts that opened a trustline in `cohort_week`, and how many stayed.
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct TrustlineCohortRetention {
+    pub cohort_week: String,
+    pub cohort_size: i64,
+    pub retention: Vec<CohortWeekRetention>,
+}
+
+/// Weekly cohort retention matrix for one asset's trustlines.
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct TrustlineCohortMatrix {
+    pub asset_code: String,
+    pub asset_issuer: String,
+    pub total_tracked_accounts: i64,
+    pub spam_accounts_excluded: i64,
+    pub cohorts: Vec<TrustlineCohortRetention>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
