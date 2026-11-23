@@ -86,7 +86,7 @@ jobs:
           # Create a temporary SQLite database for testing
           DATABASE_URL=sqlite::memory: cargo test --test schema_compatibility -- --test-threads=1
         env:
-          DATABASE_URL: sqlite::memory:
+          DATABASE_URL: "sqlite::memory:"
       
       - name: Build backend
         run: |
@@ -101,7 +101,7 @@ jobs:
           echo "Testing that backend compiles with current migrations..."
           cargo build --release --bin payraider-backend
         env:
-          DATABASE_URL: sqlite::memory:
+          DATABASE_URL: "sqlite::memory:"
 
   check-no-destructive-without-marker:
     name: Verify no destructive migrations without marker
