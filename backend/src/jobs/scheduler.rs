@@ -147,10 +147,16 @@ impl JobScheduler {
                     match persistence.find_missed_runs(&job_name, clock.now()).await {
                         Ok(missed) => {
                             for scheduled_for in missed {
-                                match persistence.get_or_create_run(&job_name, scheduled_for).await {
+                                match persistence
+                                    .get_or_create_run(&job_name, scheduled_for)
+                                    .await
+                                {
                                     Ok(mut run) => {
                                         run.skip();
-                                        if let Err(e) = persistence.fail_run(run.id, "Skipped by catch-up policy").await {
+                                        if let Err(e) = persistence
+                                            .fail_run(run.id, "Skipped by catch-up policy")
+                                            .await
+                                        {
                                             warn!("Failed to record skipped run: {}", e);
                                         }
                                     }
@@ -166,7 +172,8 @@ impl JobScheduler {
                 tokio::time::sleep(interval).await;
 
                 let lock_key = format!("job-lock:{}", config.name);
-                let lock_ttl = Duration::from_secs(config.interval_seconds.saturating_sub(5).max(1));
+                let lock_ttl =
+                    Duration::from_secs(config.interval_seconds.saturating_sub(5).max(1));
                 let Some(guard) = lock.try_acquire(&lock_key, lock_ttl).await else {
                     info!(
                         "Job '{}' skipped — another instance holds the lock (or Redis is unavailable)",
@@ -263,7 +270,7 @@ impl JobScheduler {
         scheduler.add_job(config, move || {
             let price_feed = Arc::clone(&price_feed_clone);
             Box::pin(async move {
-                price_feed.refresh().await?;
+                price_feed.warm_cache().await?;
                 Ok(())
             })
         });
