@@ -9,7 +9,8 @@ use std::sync::Arc;
 use tokio::time::{interval, Duration};
 
 use crate::models::{
-    AnchorHealthScoreExplanation, AnchorMetrics, AnchorStatus, ScoreComponentDetail,
+    AnchorHealthScoreExplanation, AnchorMetrics, AnchorSettlementStagesResponse, AnchorStatus,
+    ScoreComponentDetail, StageLatencyStat,
 };
 
 pub const METHODOLOGY_VERSION: &str = "1.0.0";
@@ -283,7 +284,11 @@ pub fn diff_capabilities(
                 changes.push(format!(
                     "SEP-{} {}",
                     curr_sep.sep,
-                    if curr_sep.enabled { "enabled" } else { "disabled" }
+                    if curr_sep.enabled {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    }
                 ));
             }
             _ => {}
@@ -339,10 +344,7 @@ impl AnchorMonitor {
     /// Record a freshly crawled capability matrix, tracking changes over time.
     ///
     /// Returns the list of capability changes detected since the previous snapshot.
-    pub async fn record_capabilities(
-        &self,
-        matrix: AnchorCapabilityMatrix,
-    ) -> Vec<String> {
+    pub async fn record_capabilities(&self, matrix: AnchorCapabilityMatrix) -> Vec<String> {
         let mut last = self.last_capabilities.write().await;
         let changes = match last.get(&matrix.anchor_id) {
             Some(prev) => diff_capabilities(prev, &matrix),
@@ -374,9 +376,7 @@ impl AnchorMonitor {
         guard
             .values()
             .filter(|m| {
-                let sep_ok = sep.map_or(true, |s| {
-                    m.seps.iter().any(|c| c.sep == s && c.enabled)
-                });
+                let sep_ok = sep.map_or(true, |s| m.seps.iter().any(|c| c.sep == s && c.enabled));
                 let asset_ok = asset.map_or(true, |a| m.assets.iter().any(|x| x == a));
                 sep_ok && asset_ok
             })
@@ -619,8 +619,10 @@ impl AnchorMonitor {
         db: &Database,
         anchor_id: &str,
     ) -> Result<AnchorHealthScoreExplanation> {
+        let anchor_uuid = uuid::Uuid::parse_str(anchor_id)
+            .map_err(|e| anyhow!("Invalid anchor id {anchor_id}: {e}"))?;
         let anchor = db
-            .get_anchor_by_id(anchor_id)
+            .get_anchor_by_id(anchor_uuid)
             .await?
             .ok_or_else(|| anyhow!("Anchor not found"))?;
 
@@ -641,7 +643,8 @@ impl AnchorMonitor {
         .unwrap_or(None);
 
         if let Some(json_str) = stored_json {
-            if let Ok(explanation) = serde_json::from_str::<AnchorHealthScoreExplanation>(&json_str) {
+            if let Ok(explanation) = serde_json::from_str::<AnchorHealthScoreExplanation>(&json_str)
+            {
                 return Ok(explanation);
             }
         }
@@ -753,7 +756,11 @@ impl AnchorMonitor {
             count += 1;
         }
 
-        tracing::info!("Recomputed health scores for {} anchors under methodology v{}", count, version);
+        tracing::info!(
+            "Recomputed health scores for {} anchors under methodology v{}",
+            count,
+            version
+        );
         Ok(count)
     }
 
@@ -768,7 +775,9 @@ impl AnchorMonitor {
         external_payout_ms: Option<i64>,
         status: &str,
     ) -> Result<()> {
-        let total = on_chain_ms.unwrap_or(0) + anchor_processing_ms.unwrap_or(0) + external_payout_ms.unwrap_or(0);
+        let total = on_chain_ms.unwrap_or(0)
+            + anchor_processing_ms.unwrap_or(0)
+            + external_payout_ms.unwrap_or(0);
         let id = uuid::Uuid::new_v4().to_string();
         sqlx::query(
             r"

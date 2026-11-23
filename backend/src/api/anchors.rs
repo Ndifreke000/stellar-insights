@@ -18,12 +18,16 @@ use crate::cache::keys;
 use crate::cache::CacheManager;
 use crate::database::Database;
 use crate::error::{ApiError, ApiResult};
-use crate::models::{AnchorDetailResponse, CreateAnchorRequest};
+use crate::models::{
+    AnchorDetailResponse, AnchorHealthScoreExplanation, AnchorSettlementStagesResponse,
+    CreateAnchorRequest,
+};
 use crate::pagination::{Page, PaginatedResponse, PaginationParams};
 use crate::rpc::circuit_breaker::rpc_circuit_breaker;
 use crate::rpc::error::{with_retry, RetryConfig, RpcError};
 use crate::rpc::StellarRpcClient;
 use crate::services::price_feed::PriceFeedClient;
+use crate::services::stellar_toml::TomlValidationReport;
 use crate::state::AppState;
 use tracing::warn;
 
@@ -652,7 +656,7 @@ pub async fn get_anchor_health_score(
         &id,
     )
     .await
-    .map_err(|e| ApiError::internal(e.to_string()))?;
+    .map_err(|e| ApiError::internal("ANCHOR_SCORE_FAILED", e.to_string()))?;
 
     Ok(Json(explanation))
 }
@@ -680,7 +684,7 @@ pub async fn get_anchor_settlement_stages(
         &id,
     )
     .await
-    .map_err(|e| ApiError::internal(e.to_string()))?;
+    .map_err(|e| ApiError::internal("SETTLEMENT_STAGES_FAILED", e.to_string()))?;
 
     Ok(Json(stages))
 }
@@ -725,7 +729,7 @@ pub async fn validate_toml_domain(
 ) -> ApiResult<Json<crate::services::stellar_toml::TomlValidationReport>> {
     let report = crate::services::stellar_toml::validate_domain_toml(&domain)
         .await
-        .map_err(|e| ApiError::internal(e.to_string()))?;
+        .map_err(|e| ApiError::internal("TOML_VALIDATION_FAILED", e.to_string()))?;
     Ok(Json(report))
 }
 
