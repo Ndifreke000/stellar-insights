@@ -49,6 +49,13 @@ where
     }
 }
 
+/// The API key a request was authenticated with, if any. Only the key's
+/// identifier is carried; the secret itself is never stored in extensions.
+#[derive(Debug, Clone)]
+pub struct ApiKeyIdentity {
+    pub key_id: String,
+}
+
 /// Like AuthUser, but only resolves for a user with is_admin = true.
 /// Rejects with AuthError::Forbidden for a valid, authenticated non-admin
 /// -- distinct from AuthError::MissingToken/InvalidToken, which mean "we

@@ -32,7 +32,13 @@ pub async fn api_analytics_middleware(
     let api_key_id = req
         .extensions()
         .get::<crate::auth_middleware::ApiKeyIdentity>()
-        .map(|k| k.key_id.clone());
+        .map(|k| k.key_id.clone())
+        .or_else(|| {
+            req.headers()
+                .get("x-api-key-id")
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_string)
+        });
 
     let response = next.run(req).await;
 
