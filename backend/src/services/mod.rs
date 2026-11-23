@@ -5,7 +5,6 @@ pub mod alert_manager;
 pub mod alert_service;
 pub mod amm_simulation;
 pub mod analytics;
-pub mod anchor_capability;
 pub mod anchor_monitor;
 pub mod asset_impersonation_detector;
 pub mod asset_verifier;
@@ -13,9 +12,9 @@ pub mod broadcaster_port;
 pub mod contract;
 pub mod contract_listener;
 pub mod corridor_performance_monitor;
+pub mod data_port;
 pub mod envelope_policy;
 pub mod erasure;
-pub mod data_port;
 pub mod event_indexer;
 pub mod fee_bump_tracker;
 #[cfg(feature = "gdpr")]
@@ -30,11 +29,10 @@ pub mod preflight;
 pub mod price_feed;
 pub mod realtime_broadcaster;
 pub mod request_signing;
+pub mod retention;
 pub mod route_stats;
 pub mod service_container;
 pub mod signature_audit;
-pub mod transaction_signer;
-pub mod user_keys;
 /// Optional Slack notification bot. Excluded from the default build to keep
 /// the default binary smaller and its attack surface reduced; enable with
 /// `--features slack-bot`.
@@ -42,8 +40,9 @@ pub mod user_keys;
 pub mod slack_bot;
 pub mod snapshot;
 pub mod stellar_toml;
+pub mod transaction_signer;
 pub mod trustline_analyzer;
+pub mod user_keys;
 pub mod verification_rewards;
 pub mod webhook_dispatcher;
 pub mod webhook_event_service;
-pub mod retention;
