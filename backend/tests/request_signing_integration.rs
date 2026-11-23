@@ -37,6 +37,7 @@ async fn test_valid_signature_verification() {
             &signature,
             signing_secret,
             300,
+            "test-client",
         )
         .await;
 
@@ -80,6 +81,7 @@ async fn test_invalid_signature_rejected() {
             &signature,
             signing_secret,
             300,
+            "test-client",
         )
         .await;
 
@@ -123,6 +125,7 @@ async fn test_tampered_body_rejected() {
             &signature,
             signing_secret,
             300,
+            "test-client",
         )
         .await;
 
@@ -163,6 +166,7 @@ async fn test_expired_timestamp_rejected() {
             &signature,
             signing_secret,
             300, // 5 minute clock skew
+            "test-client",
         )
         .await;
 
@@ -211,6 +215,7 @@ async fn test_query_params_included_in_signature() {
             &signature,
             signing_secret,
             300,
+            "test-client",
         )
         .await;
 
@@ -252,6 +257,7 @@ async fn test_method_mismatch_rejected() {
             &signature,
             signing_secret,
             300,
+            "test-client",
         )
         .await;
 
