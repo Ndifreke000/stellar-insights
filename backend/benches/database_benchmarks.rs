@@ -341,7 +341,7 @@ fn bench_concurrent_writes(c: &mut Criterion) {
             BenchmarkId::new("writer_task_batched", writers),
             &writers,
             |b, &writers| {
-                b.to_async(&rt).iter(|| async move {
+                b.to_async(&rt).iter(|| async {
                     let pool = setup_test_db().await;
                     let tx = spawn_writer(&rt, pool.clone(), 1024, 64);
                     let counter = Arc::new(AtomicUsize::new(0));
