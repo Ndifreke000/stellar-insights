@@ -98,7 +98,7 @@ jobs:
       - name: Version PR or publish
         if: steps.creds.outputs.enabled == 'true'
         id: changesets
-        uses: changesets/action@v1
+        uses: changesets/action@v2
         with:
           cwd: sdk
           version: npm run version-packages
