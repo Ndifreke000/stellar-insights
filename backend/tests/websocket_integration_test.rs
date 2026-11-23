@@ -16,7 +16,7 @@ async fn test_websocket_subscription_flow() {
     let parsed: Result<WsMessage, _> = serde_json::from_value(subscribe_msg);
     assert!(parsed.is_ok());
 
-    if let Ok(WsMessage::Subscribe { channels }) = parsed {
+    if let Ok(WsMessage::Subscribe { channels, .. }) = parsed {
         assert_eq!(channels.len(), 2);
         assert!(channels.contains(&"corridor:USDC-XLM".to_string()));
         assert!(channels.contains(&"anchor:GXXX".to_string()));
