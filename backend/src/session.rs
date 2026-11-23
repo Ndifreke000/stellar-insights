@@ -438,6 +438,133 @@ impl SessionService {
             )
             .collect();
 
-        Ok(result)
+        // Decrypt PII fields for display. Done after the query so a single
+        // bad row cannot fail the whole listing.
+        let mut out = Vec::with_capacity(result.len());
+        for info in result {
+            let ip_address = self
+                .user_keys
+                .decrypt_field(user_id, &info.ip_address)
+                .await
+                .unwrap_or_else(|_| info.ip_address.clone());
+            let device_user_agent = match &info.device_user_agent {
+                Some(ua) => self
+                    .user_keys
+                    .decrypt_field(user_id, ua)
+                    .await
+                    .ok()
+                    .or_else(|| info.device_user_agent.clone()),
+                None => None,
+            };
+            out.push(SessionInfo {
+                id: info.id,
+                device_user_agent,
+                ip_address,
+                created_at: info.created_at,
+                last_activity_at: info.last_activity_at,
+                expires_at: info.expires_at,
+                is_current: info.is_current,
+            });
+        }
+
+        Ok(out)
+    }
+
+    /// Revoke all sessions except the current one
+    pub async fn revoke_all_other_sessions(
+        &self,
+        user_id: &str,
+        current_session_id: &str,
+    ) -> Result<()> {
+        let now = Utc::now();
+
+        sqlx::query(
+            "UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND id != ? AND revoked_at IS NULL",
+        )
+        .bind(now)
+        .bind(user_id)
+        .bind(current_session_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Revoke all sessions for a user (logout everywhere)
+    pub async fn revoke_all_sessions(&self, user_id: &str) -> Result<()> {
+        let now = Utc::now();
+
+        sqlx::query("UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL")
+            .bind(now)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Get session by refresh token JTI
+    pub async fn get_session_by_jti(&self, jti: &str) -> Result<Option<Session>> {
+        let session = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                Option<String>,
+                String,
+                chrono::DateTime<chrono::Utc>,
+                chrono::DateTime<chrono::Utc>,
+                chrono::DateTime<chrono::Utc>,
+                i64,
+                i64,
+                Option<chrono::DateTime<chrono::Utc>>,
+            ),
+        >(
+            r"
+            SELECT id, user_id, refresh_token_jti, device_user_agent, ip_address,
+                   created_at, last_activity_at, expires_at, idle_timeout_seconds,
+                   max_lifetime_seconds, revoked_at
+            FROM sessions
+            WHERE refresh_token_jti = ?
+            ",
+        )
+        .bind(jti)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some((
+            id,
+            user_id,
+            jti,
+            device,
+            ip,
+            created,
+            last_activity,
+            expires,
+            idle,
+            max_lifetime,
+            revoked,
+        )) = session
+        {
+            let ip_address = self.user_keys.decrypt_field(&user_id, &ip).await?;
+            let device_user_agent = self.user_keys.decrypt_opt(&user_id, device).await?;
+
+            return Ok(Some(Session {
+                id,
+                user_id,
+                refresh_token_jti: jti,
+                device_user_agent,
+                ip_address,
+                created_at: created,
+                last_activity_at: last_activity,
+                expires_at: expires,
+                idle_timeout_seconds: idle,
+                max_lifetime_seconds: max_lifetime,
+                revoked_at: revoked,
+            }));
+        }
+
+        Ok(None)
     }
 }
