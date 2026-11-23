@@ -458,3 +458,287 @@ pub async fn get_transactions(
     sanitize_value(&mut data, &host);
     Ok(Json(data))
 }
+
+/// GET /`api/sep31/transactions/:id?transfer_server=&jwt`=
+#[derive(Debug, Deserialize)]
+pub struct GetTransactionQuery {
+    pub transfer_server: String,
+    #[serde(default)]
+    pub jwt: Option<String>,
+}
+
+/// GET /api/sep31/transactions/{id} - Get a specific SEP-31 transaction
+#[utoipa::path(
+    get,
+    path = "/api/sep31/transactions/{id}",
+    operation_id = "sep31_get_transaction",
+    params(
+        ("id" = String, Path, description = "Transaction ID"),
+        ("transfer_server" = String, Query, description = "SEP-31 transfer server URL"),
+        ("jwt" = Option<String>, Query, description = "JWT authentication token")
+    ),
+    responses(
+        (status = 200, description = "Transaction details"),
+        (status = 403, description = "Transfer server not in allowed list"),
+        (status = 404, description = "Transaction not found"),
+        (status = 502, description = "Proxy error")
+    ),
+    tag = "SEP-31"
+)]
+pub async fn get_transaction(
+    State(state): State<Sep31State>,
+    Path(id): Path<String>,
+    Query(q): Query<GetTransactionQuery>,
+) -> Result<Json<Value>, Sep31Error> {
+    if !is_origin_allowed(&q.transfer_server) {
+        return Err(Sep31Error::Forbidden(
+            "Transfer server not in allowed list".to_string(),
+        ));
+    }
+    let url = format!(
+        "{}/transactions/{}",
+        base_url(&q.transfer_server),
+        urlencoding::encode(&id)
+    );
+
+    let mut req = state.client.get(&url);
+    if let Some(jwt) = &q.jwt {
+        req = req.header("Authorization", format!("Bearer {jwt}"));
+    }
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| Sep31Error::Proxy(e.to_string()))?;
+
+    let status = resp.status();
+    let data = resp
+        .json::<Value>()
+        .await
+        .map_err(|e| Sep31Error::Proxy(e.to_string()))?;
+
+    if !status.is_success() {
+        return Err(Sep31Error::Anchor(status.as_u16(), data));
+    }
+    Ok(Json(data))
+}
+
+/// GET /`api/sep31/customer?transfer_server=&jwt=&id`= - KYC customer fetch
+#[derive(Debug, Deserialize)]
+pub struct CustomerQuery {
+    pub transfer_server: String,
+    #[serde(default)]
+    pub jwt: Option<String>,
+    pub id: String,
+}
+
+/// GET /api/sep31/customer - Get KYC customer information
+#[utoipa::path(
+    get,
+    path = "/api/sep31/customer",
+    params(
+        ("transfer_server" = String, Query, description = "SEP-31 transfer server URL"),
+        ("jwt" = Option<String>, Query, description = "JWT authentication token"),
+        ("id" = String, Query, description = "Customer ID")
+    ),
+    responses(
+        (status = 200, description = "Customer information"),
+        (status = 403, description = "Transfer server not in allowed list"),
+        (status = 502, description = "Proxy error")
+    ),
+    tag = "SEP-31"
+)]
+pub async fn get_customer(
+    State(state): State<Sep31State>,
+    Query(q): Query<CustomerQuery>,
+) -> Result<Json<Value>, Sep31Error> {
+    if !is_origin_allowed(&q.transfer_server) {
+        return Err(Sep31Error::Forbidden(
+            "Transfer server not in allowed list".to_string(),
+        ));
+    }
+    let url = format!(
+        "{}/customer?id={}",
+        base_url(&q.transfer_server),
+        urlencoding::encode(&q.id)
+    );
+
+    let mut req = state.client.get(&url);
+    if let Some(jwt) = &q.jwt {
+        req = req.header("Authorization", format!("Bearer {jwt}"));
+    }
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| Sep31Error::Proxy(e.to_string()))?;
+
+    let status = resp.status();
+    let data = resp
+        .json::<Value>()
+        .await
+        .map_err(|e| Sep31Error::Proxy(e.to_string()))?;
+
+    if !status.is_success() {
+        return Err(Sep31Error::Anchor(status.as_u16(), data));
+    }
+    Ok(Json(data))
+}
+
+/// PUT /api/sep31/customer - KYC customer update (e.g. interactive callback)
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct PutCustomerBody {
+    pub transfer_server: String,
+    #[serde(default)]
+    pub jwt: Option<String>,
+    #[serde(flatten)]
+    pub payload: Value,
+}
+
+/// PUT /api/sep31/customer - Update KYC customer information
+#[utoipa::path(
+    put,
+    path = "/api/sep31/customer",
+    request_body = PutCustomerBody,
+    responses(
+        (status = 200, description = "Customer updated successfully"),
+        (status = 403, description = "Transfer server not in allowed list"),
+        (status = 502, description = "Proxy error")
+    ),
+    tag = "SEP-31"
+)]
+pub async fn put_customer(
+    State(state): State<Sep31State>,
+    Json(body): Json<PutCustomerBody>,
+) -> Result<Json<Value>, Sep31Error> {
+    if !is_origin_allowed(&body.transfer_server) {
+        return Err(Sep31Error::Forbidden(
+            "Transfer server not in allowed list".to_string(),
+        ));
+    }
+    let url = format!("{}/customer", base_url(&body.transfer_server));
+    let mut req = state.client.put(&url);
+    if let Some(jwt) = &body.jwt {
+        req = req.header("Authorization", format!("Bearer {jwt}"));
+    }
+    let resp = req
+        .json(&body.payload)
+        .send()
+        .await
+        .map_err(|e| Sep31Error::Proxy(e.to_string()))?;
+
+    let status = resp.status();
+    let data = resp
+        .json::<Value>()
+        .await
+        .map_err(|e| Sep31Error::Proxy(e.to_string()))?;
+
+    if !status.is_success() {
+        return Err(Sep31Error::Anchor(status.as_u16(), data));
+    }
+    Ok(Json(data))
+}
+
+/// List configured SEP-31 anchors. GET /api/sep31/anchors
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Sep31AnchorInfo {
+    pub name: String,
+    pub transfer_server: String,
+    pub home_domain: Option<String>,
+}
+
+/// GET /api/sep31/anchors - List configured SEP-31 anchors
+#[utoipa::path(
+    get,
+    path = "/api/sep31/anchors",
+    operation_id = "sep31_list_anchors",
+    responses(
+        (status = 200, description = "List of configured SEP-31 anchors")
+    ),
+    tag = "SEP-31"
+)]
+pub async fn list_anchors() -> Json<Value> {
+    let anchors: Vec<Sep31AnchorInfo> = if let Ok(s) = std::env::var("SEP31_ANCHORS") {
+        serde_json::from_str(&s).unwrap_or_default()
+    } else {
+        vec![]
+    };
+    Json(serde_json::json!({ "anchors": anchors }))
+}
+
+#[derive(Debug)]
+pub enum Sep31Error {
+    Forbidden(String),
+    Proxy(String),
+    Anchor(u16, Value),
+}
+
+impl IntoResponse for Sep31Error {
+    fn into_response(self) -> axum::response::Response {
+        let (status, body) = match &self {
+            Self::Forbidden(msg) => (
+                StatusCode::FORBIDDEN,
+                serde_json::json!({ "error": "forbidden", "message": msg }),
+            ),
+            Self::Proxy(msg) => (
+                StatusCode::BAD_GATEWAY,
+                serde_json::json!({ "error": "proxy", "message": msg }),
+            ),
+            Self::Anchor(code, data) => {
+                let status = StatusCode::from_u16(*code).unwrap_or(StatusCode::BAD_GATEWAY);
+                (status, data.clone())
+            }
+        };
+        (status, Json(body)).into_response()
+    }
+}
+
+pub fn routes() -> axum::Router {
+    let state = Sep31State::new();
+    axum::Router::new()
+        .route("/api/sep31/info", axum::routing::get(get_info))
+        .route("/api/sep31/quote", axum::routing::post(post_quote))
+        .route(
+            "/api/sep31/transactions",
+            axum::routing::get(get_transactions).post(post_transaction),
+        )
+        .route(
+            "/api/sep31/transactions/{id}",
+            axum::routing::get(get_transaction),
+        )
+        .route(
+            "/api/sep31/customer",
+            axum::routing::get(get_customer).put(put_customer),
+        )
+        .route("/api/sep31/anchors", axum::routing::get(list_anchors))
+        .with_state(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_base_url() {
+        assert_eq!(
+            base_url("https://api.example.com/sep31"),
+            "https://api.example.com/sep31"
+        );
+        assert_eq!(
+            base_url("https://api.example.com/"),
+            "https://api.example.com"
+        );
+    }
+
+    #[test]
+    fn test_quote_body_deserialize() {
+        let json = r#"{"transfer_server":"https://api.test.com/sep31","payload":{"amount":"100","sell_asset":"USDC:issuer","buy_asset":"iso4217:USD"}}"#;
+        let body: QuoteBody = serde_json::from_str(json).unwrap();
+        assert_eq!(body.transfer_server, "https://api.test.com/sep31");
+    }
+
+    #[test]
+    fn test_create_transaction_body_deserialize() {
+        let json = r#"{"transfer_server":"https://api.test.com/sep31","payload":{"amount":"100","receiver_id":"receiver123"}}"#;
+        let body: CreateTransactionBody = serde_json::from_str(json).unwrap();
+        assert_eq!(body.transfer_server, "https://api.test.com/sep31");
+    }
+}
