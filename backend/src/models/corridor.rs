@@ -71,7 +71,7 @@ impl Corridor {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, sqlx::FromRow)]
 pub struct CorridorMetrics {
     pub id: String,
     pub corridor_key: String,
@@ -101,6 +101,58 @@ pub struct CorridorMetrics {
     pub liquidity_depth_usd: f64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+impl CorridorMetrics {
+    /// Combine two corridors' metrics into one aggregate, as used for custom
+    /// corridor groupings: counts, volume and liquidity are summed, the success
+    /// rate is recomputed, and latencies are weighted by transaction count.
+    #[must_use]
+    pub fn merge(&self, other: &Self) -> Self {
+        fn weighted(a: Option<i32>, wa: i64, b: Option<i32>, wb: i64) -> Option<i32> {
+            match (a, b) {
+                (Some(x), Some(y)) if wa + wb > 0 => {
+                    let total = i64::from(x) * wa + i64::from(y) * wb;
+                    i32::try_from(total / (wa + wb)).ok()
+                }
+                (Some(x), None) => Some(x),
+                (None, Some(y)) => Some(y),
+                _ => None,
+            }
+        }
+
+        let total_transactions = self.total_transactions + other.total_transactions;
+        let successful_transactions = self.successful_transactions + other.successful_transactions;
+        let success_rate = if total_transactions > 0 {
+            successful_transactions as f64 / total_transactions as f64 * 100.0
+        } else {
+            0.0
+        };
+        Self {
+            date: self.date.max(other.date),
+            total_transactions,
+            successful_transactions,
+            failed_transactions: self.failed_transactions + other.failed_transactions,
+            success_rate,
+            volume_usd: self.volume_usd + other.volume_usd,
+            avg_settlement_latency_ms: weighted(
+                self.avg_settlement_latency_ms,
+                self.total_transactions,
+                other.avg_settlement_latency_ms,
+                other.total_transactions,
+            ),
+            median_settlement_latency_ms: weighted(
+                self.median_settlement_latency_ms,
+                self.total_transactions,
+                other.median_settlement_latency_ms,
+                other.total_transactions,
+            ),
+            liquidity_depth_usd: self.liquidity_depth_usd + other.liquidity_depth_usd,
+            created_at: self.created_at.max(other.created_at),
+            updated_at: self.updated_at.max(other.updated_at),
+            ..self.clone()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
