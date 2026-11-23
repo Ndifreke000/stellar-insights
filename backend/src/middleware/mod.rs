@@ -32,11 +32,14 @@ pub use concurrency_limit::{
 pub use cost_rate_limiter::CostRateLimiter;
 pub use database_schema_separation::DatabaseSchemaSeparation;
 pub use etag_caching_support::ETagCachingSupport;
-pub use expensive_rate_limiter::{categorize_endpoint, extract_identifier, ExpensiveRateLimiter, RateLimitConfig, rate_limit_headers};
+pub use expensive_rate_limiter::{
+    categorize_endpoint, extract_identifier, rate_limit_headers, ExpensiveRateLimiter,
+    RateLimitConfig,
+};
 pub use field_selection_parameter::{field_selection_middleware, FieldSelectionParameter};
 pub use jwt_token_refresh::JWTTokenRefresh;
 pub use mobile_pagination_endpoints::MobilePaginationEndpoints;
-pub use mobile_request_logging::{MobileLogRecord, MobileRequestLogging};
+pub use mobile_request_logging::{mobile_request_logging, MobileLogRecord};
 pub use network_aware_rpc_client::NetworkAwareRpcClient;
 pub use network_context_middleware::NetworkContextMiddleware;
 pub use network_status_endpoint::NetworkStatusEndpoint;
