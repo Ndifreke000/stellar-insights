@@ -221,7 +221,14 @@ pub fn evaluate_progress(observed_paths: &[String]) -> (Vec<String>, Vec<String>
 }
 
 /// Sign a completion record with the server secret (HMAC-style keyed hash).
-fn sign_record(secret: &str, account: &str, quests: &[String], achievements: &[String], xp: u32, issued_at: u64) -> String {
+fn sign_record(
+    secret: &str,
+    account: &str,
+    quests: &[String],
+    achievements: &[String],
+    xp: u32,
+    issued_at: u64,
+) -> String {
     let mut hasher = Sha256::new();
     hasher.update(secret.as_bytes());
     hasher.update(b"|");
@@ -234,7 +241,7 @@ fn sign_record(secret: &str, account: &str, quests: &[String], achievements: &[S
     hasher.update(xp.to_le_bytes());
     hasher.update(b"|");
     hasher.update(issued_at.to_le_bytes());
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
 }
 
 /// Simple per-account sliding-window rate limiter for progress submissions.
@@ -340,7 +347,14 @@ async fn post_progress(
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let signature = sign_record(&state.secret, &req.account, &quests, &achievements, xp, issued_at);
+    let signature = sign_record(
+        &state.secret,
+        &req.account,
+        &quests,
+        &achievements,
+        xp,
+        issued_at,
+    );
 
     Ok(Json(ProgressResponse {
         record: CompletionRecord {
