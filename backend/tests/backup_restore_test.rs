@@ -17,6 +17,7 @@ fn config(db_path: &Path, backup_dir: &Path) -> BackupConfig {
         backup_dir: backup_dir.to_string_lossy().into_owned(),
         keep_days: 30,
         schedule_hour_utc: 2,
+        encryption_key: None,
     }
 }
 
