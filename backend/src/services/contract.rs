@@ -267,7 +267,9 @@ impl ContractService {
 
         // Step 3: Prepare and sign the transaction
         debug!("Preparing and signing transaction");
-        let signed_xdr = self.prepare_and_sign_transaction(&simulated, hash, epoch).await?;
+        let signed_xdr = self
+            .prepare_and_sign_transaction(&simulated, hash, epoch)
+            .await?;
 
         // Step 4: Send the transaction
         debug!("Sending transaction to network");
@@ -384,11 +386,20 @@ impl ContractService {
 
         // Envelope policy gate: refuse to sign anything that is not exactly
         // the submit_snapshot(hash, epoch) call we asked the RPC to simulate.
-        if let Err(e) =
-            envelope_policy::validate_submit_snapshot_envelope(&tx, &self.config.contract_id, &hash, epoch)
-        {
-            self.audit(SignatureStatus::PolicyRejected, "", epoch, None, Some(e.to_string()))
-                .await;
+        if let Err(e) = envelope_policy::validate_submit_snapshot_envelope(
+            &tx,
+            &self.config.contract_id,
+            &hash,
+            epoch,
+        ) {
+            self.audit(
+                SignatureStatus::PolicyRejected,
+                "",
+                epoch,
+                None,
+                Some(e.to_string()),
+            )
+            .await;
             return Err(e.context("Envelope policy rejected the simulated transaction"));
         }
 
@@ -437,7 +448,11 @@ impl ContractService {
                 &tx_hash_hex,
                 epoch,
                 None,
-                Some(format!("{}: bad signature length {}", signer.backend(), signature.len())),
+                Some(format!(
+                    "{}: bad signature length {}",
+                    signer.backend(),
+                    signature.len()
+                )),
             )
             .await;
             return Err(anyhow::anyhow!(
@@ -459,7 +474,10 @@ impl ContractService {
                 &tx_hash_hex,
                 epoch,
                 None,
-                Some(format!("{}: signature self-check failed: {e}", signer.backend())),
+                Some(format!(
+                    "{}: signature self-check failed: {e}",
+                    signer.backend()
+                )),
             )
             .await;
             return Err(e.context("Signer produced an invalid signature"));

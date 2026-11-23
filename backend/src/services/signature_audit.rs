@@ -236,12 +236,11 @@ mod tests {
             ))
             .await;
 
-        let (backend, status, epoch): (String, String, i64) = sqlx::query_as(
-            "SELECT signer_backend, status, epoch FROM transaction_signature_audit",
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+        let (backend, status, epoch): (String, String, i64) =
+            sqlx::query_as("SELECT signer_backend, status, epoch FROM transaction_signature_audit")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
         assert_eq!(backend, "gcp-kms");
         assert_eq!(status, "signed");
         assert_eq!(epoch, 42);

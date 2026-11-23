@@ -172,8 +172,7 @@ fn pii_spans(input: &str) -> Vec<(usize, usize)> {
         if b[i] == b'e' && i + 2 < n && b[i + 1] == b'y' && b[i + 2] == b'J' {
             let mut end = i;
             while end < n
-                && (b[end].is_ascii_alphanumeric()
-                    || matches!(b[end], b'_' | b'-' | b'.' | b'='))
+                && (b[end].is_ascii_alphanumeric() || matches!(b[end], b'_' | b'-' | b'.' | b'='))
             {
                 end += 1;
             }
@@ -204,9 +203,7 @@ fn pii_spans(input: &str) -> Vec<(usize, usize)> {
                 start -= 1;
             }
             let mut end = i + 1;
-            while end < n
-                && (b[end].is_ascii_alphanumeric() || matches!(b[end], b'.' | b'-'))
-            {
+            while end < n && (b[end].is_ascii_alphanumeric() || matches!(b[end], b'.' | b'-')) {
                 end += 1;
             }
             if start < i && end > i + 1 && input[i + 1..end].contains('.') {
@@ -271,8 +268,7 @@ fn pii_spans(input: &str) -> Vec<(usize, usize)> {
                 e
             } else {
                 let mut e = j;
-                while e < n
-                    && !(lb[e] == b',' || lb[e] == b'}' || lb[e] == b' ' || lb[e] == b'\n')
+                while e < n && !(lb[e] == b',' || lb[e] == b'}' || lb[e] == b' ' || lb[e] == b'\n')
                 {
                     e += 1;
                 }

@@ -127,8 +127,8 @@ impl CorridorMonitor {
     ) -> NetworkStatus {
         let mut status = self.network_status.write().await;
 
-        let seconds_since_last_ledger = last_ledger_close_unix
-            .map(|close| now_unix.saturating_sub(close));
+        let seconds_since_last_ledger =
+            last_ledger_close_unix.map(|close| now_unix.saturating_sub(close));
         let halted = seconds_since_last_ledger
             .map(|secs| secs > self.halt_threshold_secs)
             .unwrap_or(false);

@@ -186,10 +186,7 @@ mod tests {
         assert!(response.headers().get(ETAG).is_some());
         assert!(response.headers().get(LAST_MODIFIED).is_some());
         assert_eq!(
-            response
-                .headers()
-                .get(VARY)
-                .and_then(|v| v.to_str().ok()),
+            response.headers().get(VARY).and_then(|v| v.to_str().ok()),
             Some("Accept-Encoding")
         );
 
@@ -237,10 +234,7 @@ mod tests {
         .expect("cached_json_response should succeed for the conditional request");
         assert_eq!(second.status(), StatusCode::NOT_MODIFIED);
         assert_eq!(
-            second
-                .headers()
-                .get(VARY)
-                .and_then(|v| v.to_str().ok()),
+            second.headers().get(VARY).and_then(|v| v.to_str().ok()),
             Some("Accept-Encoding")
         );
     }

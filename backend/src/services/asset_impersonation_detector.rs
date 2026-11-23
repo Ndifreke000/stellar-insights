@@ -59,8 +59,8 @@ impl EditDistance {
 
                 dp[i][j] = std::cmp::min(
                     std::cmp::min(
-                        dp[i - 1][j] + 1,      // deletion
-                        dp[i][j - 1] + 1,      // insertion
+                        dp[i - 1][j] + 1, // deletion
+                        dp[i][j - 1] + 1, // insertion
                     ),
                     dp[i - 1][j - 1] + cost, // substitution
                 );
@@ -98,17 +98,28 @@ pub struct HomoglyphDetector;
 impl HomoglyphDetector {
     /// Common homoglyph character mappings (Latin alphabet)
     const HOMOGLYPHS: &'static [(&'static str, &'static str)] = &[
-        ("o", "0"), ("0", "o"),
-        ("i", "1"), ("1", "i"),
-        ("l", "1"), ("1", "l"),
-        ("l", "i"), ("i", "l"),
-        ("s", "5"), ("5", "s"),
-        ("e", "e"), ("e", "e"),
-        ("a", "a"), ("a", "a"),
-        ("c", "c"), ("c", "c"),
-        ("n", "n"), ("n", "n"),
-        ("u", "u"), ("u", "u"),
-        ("m", "m"), ("m", "m"),
+        ("o", "0"),
+        ("0", "o"),
+        ("i", "1"),
+        ("1", "i"),
+        ("l", "1"),
+        ("1", "l"),
+        ("l", "i"),
+        ("i", "l"),
+        ("s", "5"),
+        ("5", "s"),
+        ("e", "e"),
+        ("e", "e"),
+        ("a", "a"),
+        ("a", "a"),
+        ("c", "c"),
+        ("c", "c"),
+        ("n", "n"),
+        ("n", "n"),
+        ("u", "u"),
+        ("u", "u"),
+        ("m", "m"),
+        ("m", "m"),
     ];
 
     /// Check if two domains are homoglyph-similar
@@ -169,9 +180,7 @@ impl CanonicalIssuerAllowlist {
         // USDC: Circle (canonical)
         known_issuers.insert(
             "USDC".to_string(),
-            vec![
-                "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".to_string(),
-            ],
+            vec!["GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".to_string()],
         );
 
         // XLM: Stellar Foundation (native)
@@ -180,25 +189,19 @@ impl CanonicalIssuerAllowlist {
         // EURC: Circle
         known_issuers.insert(
             "EURC".to_string(),
-            vec![
-                "GDQO4YMT4JRVNQS4KGEc6ZbB5qPfB3Q5X7V7V7V7V7V7".to_string(),
-            ],
+            vec!["GDQO4YMT4JRVNQS4KGEc6ZbB5qPfB3Q5X7V7V7V7V7V7".to_string()],
         );
 
         // BTC: WBTC
         known_issuers.insert(
             "BTC".to_string(),
-            vec![
-                "EBVU45U5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q5".to_string(),
-            ],
+            vec!["EBVU45U5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q5".to_string()],
         );
 
         // ETH: WETH
         known_issuers.insert(
             "ETH".to_string(),
-            vec![
-                "EETHU45U5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q".to_string(),
-            ],
+            vec!["EETHU45U5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q5Q".to_string()],
         );
 
         Self {
@@ -232,10 +235,7 @@ impl CanonicalIssuerAllowlist {
 
     /// Get all canonical issuers for an asset code
     pub fn get_canonical_issuers(&self, asset_code: &str) -> Vec<String> {
-        self.allowlists
-            .get(asset_code)
-            .cloned()
-            .unwrap_or_default()
+        self.allowlists.get(asset_code).cloned().unwrap_or_default()
     }
 
     /// Load allowlist from a configuration file (placeholder for future implementation)
@@ -319,7 +319,10 @@ impl AssetImpersonationDetector {
         asset_issuer: &str,
     ) -> Option<ImpersonationReport> {
         // Check if this issuer is canonical for this code
-        if self.canonical_issuers.is_canonical_issuer(asset_code, asset_issuer) {
+        if self
+            .canonical_issuers
+            .is_canonical_issuer(asset_code, asset_issuer)
+        {
             return None;
         }
 
@@ -357,16 +360,16 @@ impl AssetImpersonationDetector {
         let normalized2 = HomoglyphDetector::normalize_domain(domain2);
 
         // Check for homoglyph similarity
-        if self.homoglyph_detector.is_homoglyph_similar(&normalized1, &normalized2) {
+        if self
+            .homoglyph_detector
+            .is_homoglyph_similar(&normalized1, &normalized2)
+        {
             return Some(ImpersonationReport {
                 asset_code: format!("{} vs {}", domain1, domain2),
                 asset_issuer: "domain_check".to_string(),
                 report_type: ImpersonationReportType::HomoglyphDomain,
                 risk_level: RiskLevel::Critical,
-                details: format!(
-                    "Domains {} and {} are homoglyph-similar",
-                    domain1, domain2
-                ),
+                details: format!("Domains {} and {} are homoglyph-similar", domain1, domain2),
                 evidence: vec![
                     format!("Normalized 1: {}", normalized1),
                     format!("Normalized 2: {}", normalized2),
@@ -396,7 +399,10 @@ impl AssetImpersonationDetector {
                     evidence: vec![
                         format!("Normalized 1: {}", normalized1),
                         format!("Normalized 2: {}", normalized2),
-                        format!("Edit distance: {}", self.edit_distance.distance(&normalized1, &normalized2)),
+                        format!(
+                            "Edit distance: {}",
+                            self.edit_distance.distance(&normalized1, &normalized2)
+                        ),
                     ],
                     canonical_issuers: vec![domain1.to_string(), domain2.to_string()],
                 });
@@ -453,7 +459,8 @@ impl AssetImpersonationDetector {
 
     /// Add a known canonical issuer
     pub fn add_canonical_issuer(&mut self, asset_code: &str, issuer: &str) {
-        self.canonical_issuers.add_canonical_issuer(asset_code, issuer);
+        self.canonical_issuers
+            .add_canonical_issuer(asset_code, issuer);
     }
 
     /// Get the canonical issuers allowlist

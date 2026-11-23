@@ -180,7 +180,12 @@ impl VerificationRewardsService {
         let verification_id = Uuid::new_v4().to_string();
 
         // Transactional execution with unique constraint enforcement
-        let mut tx = self.db.pool().begin().await.context("Failed to start transaction")?;
+        let mut tx = self
+            .db
+            .pool()
+            .begin()
+            .await
+            .context("Failed to start transaction")?;
 
         let insert_res = sqlx::query(
             r"
@@ -203,7 +208,9 @@ impl VerificationRewardsService {
 
         if let Err(e) = insert_res {
             let err_msg = e.to_string();
-            if err_msg.contains("UNIQUE") || err_msg.contains("idx_snapshot_verifications_epoch_user") {
+            if err_msg.contains("UNIQUE")
+                || err_msg.contains("idx_snapshot_verifications_epoch_user")
+            {
                 return Err(anyhow!("Reward already claimed for this snapshot epoch"));
             }
             return Err(anyhow!(e));
@@ -657,7 +664,8 @@ impl VerificationRewardsService {
         .await
         .unwrap_or(None);
 
-        let cluster_id = existing_cluster.unwrap_or_else(|| format!("cluster_fund_{funding_account}"));
+        let cluster_id =
+            existing_cluster.unwrap_or_else(|| format!("cluster_fund_{funding_account}"));
 
         sqlx::query(
             r"
@@ -731,7 +739,11 @@ impl VerificationRewardsService {
     }
 
     /// Fetch items from the manual review queue
-    pub async fn get_review_queue(&self, status: Option<&str>, limit: i32) -> Result<Vec<ReviewQueueItem>> {
+    pub async fn get_review_queue(
+        &self,
+        status: Option<&str>,
+        limit: i32,
+    ) -> Result<Vec<ReviewQueueItem>> {
         let q_status = status.unwrap_or("pending");
         let rows = sqlx::query_as::<_, ReviewQueueItem>(
             r"
@@ -759,7 +771,8 @@ impl VerificationRewardsService {
         .fetch_optional(self.db.pool())
         .await?;
 
-        let (verification_id, user_id, _epoch) = row.ok_or_else(|| anyhow!("Pending review item not found"))?;
+        let (verification_id, user_id, _epoch) =
+            row.ok_or_else(|| anyhow!("Pending review item not found"))?;
 
         let mut tx = self.db.pool().begin().await?;
 
@@ -777,13 +790,11 @@ impl VerificationRewardsService {
         .await?;
 
         // Update verification record reward_points to BASE_REWARD_POINTS
-        sqlx::query(
-            "UPDATE snapshot_verifications SET reward_points = ? WHERE id = ?",
-        )
-        .bind(BASE_REWARD_POINTS)
-        .bind(&verification_id)
-        .execute(&mut *tx)
-        .await?;
+        sqlx::query("UPDATE snapshot_verifications SET reward_points = ? WHERE id = ?")
+            .bind(BASE_REWARD_POINTS)
+            .bind(&verification_id)
+            .execute(&mut *tx)
+            .await?;
 
         // Update user_rewards
         sqlx::query(

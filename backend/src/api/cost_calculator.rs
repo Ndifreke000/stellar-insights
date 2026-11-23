@@ -34,15 +34,60 @@ struct RpwBenchmark {
 /// Curated RPW snapshot.  Values are illustrative corridor averages from the
 /// World Bank Remittance Prices Worldwide dataset and are used as benchmarks.
 static RPW_BENCHMARKS: &[RpwBenchmark] = &[
-    RpwBenchmark { from_country: "US", to_country: "NG", cost_pct_200: 5.4, cost_pct_500: 4.1 },
-    RpwBenchmark { from_country: "US", to_country: "KE", cost_pct_200: 4.9, cost_pct_500: 3.8 },
-    RpwBenchmark { from_country: "US", to_country: "GH", cost_pct_200: 6.1, cost_pct_500: 4.7 },
-    RpwBenchmark { from_country: "US", to_country: "PH", cost_pct_200: 4.6, cost_pct_500: 3.5 },
-    RpwBenchmark { from_country: "US", to_country: "IN", cost_pct_200: 4.2, cost_pct_500: 3.2 },
-    RpwBenchmark { from_country: "US", to_country: "MX", cost_pct_200: 4.8, cost_pct_500: 3.7 },
-    RpwBenchmark { from_country: "GB", to_country: "NG", cost_pct_200: 5.9, cost_pct_500: 4.4 },
-    RpwBenchmark { from_country: "GB", to_country: "IN", cost_pct_200: 4.5, cost_pct_500: 3.4 },
-    RpwBenchmark { from_country: "EU", to_country: "NG", cost_pct_200: 6.3, cost_pct_500: 4.9 },
+    RpwBenchmark {
+        from_country: "US",
+        to_country: "NG",
+        cost_pct_200: 5.4,
+        cost_pct_500: 4.1,
+    },
+    RpwBenchmark {
+        from_country: "US",
+        to_country: "KE",
+        cost_pct_200: 4.9,
+        cost_pct_500: 3.8,
+    },
+    RpwBenchmark {
+        from_country: "US",
+        to_country: "GH",
+        cost_pct_200: 6.1,
+        cost_pct_500: 4.7,
+    },
+    RpwBenchmark {
+        from_country: "US",
+        to_country: "PH",
+        cost_pct_200: 4.6,
+        cost_pct_500: 3.5,
+    },
+    RpwBenchmark {
+        from_country: "US",
+        to_country: "IN",
+        cost_pct_200: 4.2,
+        cost_pct_500: 3.2,
+    },
+    RpwBenchmark {
+        from_country: "US",
+        to_country: "MX",
+        cost_pct_200: 4.8,
+        cost_pct_500: 3.7,
+    },
+    RpwBenchmark {
+        from_country: "GB",
+        to_country: "NG",
+        cost_pct_200: 5.9,
+        cost_pct_500: 4.4,
+    },
+    RpwBenchmark {
+        from_country: "GB",
+        to_country: "IN",
+        cost_pct_200: 4.5,
+        cost_pct_500: 3.4,
+    },
+    RpwBenchmark {
+        from_country: "EU",
+        to_country: "NG",
+        cost_pct_200: 6.3,
+        cost_pct_500: 4.9,
+    },
 ];
 
 /// Map a currency code to the ISO-3166 country used by RPW corridors.
@@ -383,7 +428,12 @@ fn rpw_comparison_for(
     let comparisons: Vec<RpwComparison> = [200.0, 500.0]
         .into_iter()
         .filter_map(|amount| {
-            build_rpw_comparison(source_currency, destination_currency, amount, stellar_cost_pct)
+            build_rpw_comparison(
+                source_currency,
+                destination_currency,
+                amount,
+                stellar_cost_pct,
+            )
         })
         .collect();
     (!comparisons.is_empty()).then_some(comparisons)

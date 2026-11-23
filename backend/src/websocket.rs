@@ -1232,11 +1232,8 @@ async fn handle_socket(
                                                         seq: entry.seq,
                                                         inner: Box::new(entry.message),
                                                     };
-                                                    let _ = send_ws_message(
-                                                        &recv_sender,
-                                                        &replay,
-                                                    )
-                                                    .await;
+                                                    let _ = send_ws_message(&recv_sender, &replay)
+                                                        .await;
                                                 }
                                             }
                                         }

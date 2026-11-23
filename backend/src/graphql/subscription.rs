@@ -3,8 +3,8 @@ use futures::{Stream, StreamExt};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 
-use crate::websocket::{WsMessage, WsState};
 use super::types::*;
+use crate::websocket::{WsMessage, WsState};
 
 /// Subscription root for real-time GraphQL updates.
 ///

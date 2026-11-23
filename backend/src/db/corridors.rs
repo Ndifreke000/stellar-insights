@@ -239,7 +239,12 @@ impl CorridorDb {
     /// can never collide with asset-pair keys.
     #[must_use]
     pub fn asset_pair_key(source: &str, dest: &str) -> String {
-        format!("{}|{}|{}", CorridorDimension::AssetPair.as_str(), source, dest)
+        format!(
+            "{}|{}|{}",
+            CorridorDimension::AssetPair.as_str(),
+            source,
+            dest
+        )
     }
 
     /// Builds the canonical dimension-tuple key for an anchor-pair corridor
@@ -279,7 +284,8 @@ impl CorridorDb {
     pub fn parse_key(key: &str) -> (CorridorDimension, Vec<String>) {
         match key.split_once('|') {
             Some((dim, rest)) => {
-                let dimension = CorridorDimension::from_str(dim).unwrap_or(CorridorDimension::AssetPair);
+                let dimension =
+                    CorridorDimension::from_str(dim).unwrap_or(CorridorDimension::AssetPair);
                 let parts = rest.split('|').map(str::to_string).collect();
                 (dimension, parts)
             }
@@ -301,7 +307,11 @@ impl CorridorDb {
             anyhow::bail!("custom grouping must have at least one member corridor");
         }
         let id = Uuid::new_v4();
-        let mut tx = self.pool.begin().await.context("Failed to start grouping tx")?;
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .context("Failed to start grouping tx")?;
         sqlx::query(
             r"
             INSERT INTO corridor_groupings (id, name, dimension)

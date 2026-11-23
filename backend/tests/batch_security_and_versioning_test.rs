@@ -32,9 +32,7 @@ use payraider_backend::api::admin_ip_whitelist;
 use payraider_backend::auth::Claims;
 use payraider_backend::auth_middleware::{auth_middleware, JwtSecret, TokenRevocationStore};
 use payraider_backend::ip_whitelist_middleware::IpWhitelistConfig;
-use payraider_backend::middleware::api_versioning::{
-    api_versioning_middleware, ApiVersionPolicy,
-};
+use payraider_backend::middleware::api_versioning::{api_versioning_middleware, ApiVersionPolicy};
 use payraider_backend::middleware::batch_endpoints::{
     batch_http_handler, BatchCallerIdentity, BatchDispatcher, BatchHandlerState,
 };
@@ -126,7 +124,10 @@ async fn build_secured_app(
         .route("/health", get(|| async { Json(json!({ "status": "ok" })) }));
 
     let admin_routes = Router::new()
-        .nest("/admin/ip-whitelist", admin_ip_whitelist::routes(ip_service))
+        .nest(
+            "/admin/ip-whitelist",
+            admin_ip_whitelist::routes(ip_service),
+        )
         .layer(middleware::from_fn(auth_middleware));
 
     let v1_router = Router::new()
@@ -141,7 +142,13 @@ async fn build_secured_app(
 
     let sub_router = Router::new()
         .nest("/api/v1", v1_router.clone())
-        .nest("/api/v2", Router::new().route("/status", get(|| async { Json(json!({ "version": "v2" })) })))
+        .nest(
+            "/api/v2",
+            Router::new().route(
+                "/status",
+                get(|| async { Json(json!({ "version": "v2" })) }),
+            ),
+        )
         .merge(v1_router.clone())
         .layer(middleware::from_fn_with_state(
             version_policy.clone(),
@@ -166,7 +173,10 @@ async fn build_secured_app(
         .nest("/api/v1", v1_router)
         .nest(
             "/api/v2",
-            Router::new().route("/status", get(|| async { Json(json!({ "version": "v2" })) })),
+            Router::new().route(
+                "/status",
+                get(|| async { Json(json!({ "version": "v2" })) }),
+            ),
         )
         .route("/health", get(|| async { Json(json!({ "status": "ok" })) }))
         .layer(middleware::from_fn_with_state(
@@ -190,8 +200,10 @@ fn post_batch_req(body: Value, token: Option<&str>, ip: [u8; 4]) -> Request<Body
     let mut req = builder
         .body(Body::from(serde_json::to_vec(&body).unwrap()))
         .unwrap();
-    req.extensions_mut()
-        .insert(ConnectInfo(SocketAddr::new(IpAddr::V4(Ipv4Addr::from(ip)), 50000)));
+    req.extensions_mut().insert(ConnectInfo(SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::from(ip)),
+        50000,
+    )));
     req
 }
 
@@ -294,7 +306,11 @@ async fn batch_enforces_admin_ip_whitelist_and_ignores_spoofed_xff() {
     });
     let blocked_resp = app
         .clone()
-        .oneshot(post_batch_req(blocked_payload, Some(&admin_token), [203, 0, 113, 9]))
+        .oneshot(post_batch_req(
+            blocked_payload,
+            Some(&admin_token),
+            [203, 0, 113, 9],
+        ))
         .await
         .unwrap();
     assert_eq!(blocked_resp.status(), StatusCode::OK);
@@ -312,7 +328,11 @@ async fn batch_enforces_admin_ip_whitelist_and_ignores_spoofed_xff() {
         ]
     });
     let allowed_resp = app
-        .oneshot(post_batch_req(allowed_payload, Some(&admin_token), [192, 168, 10, 5]))
+        .oneshot(post_batch_req(
+            allowed_payload,
+            Some(&admin_token),
+            [192, 168, 10, 5],
+        ))
         .await
         .unwrap();
     assert_eq!(allowed_resp.status(), StatusCode::OK);
@@ -460,7 +480,10 @@ async fn batch_rejects_oversized_nested_traversal_and_cost_exceeded_requests() {
         .await
         .unwrap();
     assert_eq!(oversized.status(), StatusCode::BAD_REQUEST);
-    assert_eq!(read_json(oversized).await["error"]["code"], "BATCH_TOO_LARGE");
+    assert_eq!(
+        read_json(oversized).await["error"]["code"],
+        "BATCH_TOO_LARGE"
+    );
 
     // 2. Recursive nested batch -> 400 NESTED_BATCH_FORBIDDEN
     let nested = app

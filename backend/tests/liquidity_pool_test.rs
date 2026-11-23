@@ -202,7 +202,9 @@ async fn test_lp_returns_analytics_and_net_apr() {
     assert_eq!(analytics.pool_id, *pool_id);
     assert_eq!(analytics.price_source, "horizon_dex_reserves");
     // Net APR = fee_apr - impermanent_loss_pct
-    assert!((analytics.net_apr - (analytics.fee_apr - analytics.impermanent_loss_pct)).abs() < 0.001);
+    assert!(
+        (analytics.net_apr - (analytics.fee_apr - analytics.impermanent_loss_pct)).abs() < 0.001
+    );
     assert!(analytics.fee_income_24h_usd >= 0.0);
     assert!(analytics.fee_income_7d_usd >= analytics.fee_income_24h_usd);
     assert!(analytics.fee_income_30d_usd >= analytics.fee_income_7d_usd);

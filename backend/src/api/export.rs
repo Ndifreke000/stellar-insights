@@ -17,7 +17,7 @@ use rust_xlsxwriter::{Color, Format, Workbook};
 use serde::Deserialize;
 
 use crate::error::{ApiError, ApiResult};
-use crate::middleware::cost_rate_limiter::{CostRateLimiter, extract_client_key, get_client_tier};
+use crate::middleware::cost_rate_limiter::{extract_client_key, get_client_tier, CostRateLimiter};
 use crate::models::cost::{CostConfig, CostHeaders};
 use crate::models::PaymentRow;
 use crate::state::AppState;
@@ -84,7 +84,7 @@ fn calculate_corridor_export_cost(
     corridor_id: Option<&str>,
 ) -> f64 {
     let span_days = end_date.signed_duration_since(start_date).num_days();
-    
+
     if let Some(_corridor_id) = corridor_id {
         // Single corridor - use single corridor cost
         config.export_corridor_single_cost(span_days)
@@ -166,9 +166,12 @@ pub async fn export_corridors(
     let cost_limiter = app_state.cost_rate_limiter.clone();
 
     // Check if client has sufficient budget
-    if !cost_limiter.has_sufficient_budget(&client_key, tier, cost_estimate).await {
+    if !cost_limiter
+        .has_sufficient_budget(&client_key, tier, cost_estimate)
+        .await
+    {
         let retry_after = 24 * 3600; // 24 hours until budget refresh
-        
+
         let mut headers = HeaderMap::new();
         headers.insert(
             header::CONTENT_TYPE,
@@ -179,13 +182,13 @@ pub async fn export_corridors(
             HeaderValue::from_str(&retry_after.to_string())
                 .unwrap_or_else(|_| HeaderValue::from_static("86400")),
         );
-        
+
         let cost_headers = CostHeaders::from_state(
             &crate::models::cost::ClientCostState::new(0.0, tier),
             cost_estimate,
         );
         headers = add_cost_headers(headers, &cost_headers);
-        
+
         let body = serde_json::json!({
             "error": "RATE_LIMITED",
             "code": "INSUFFICIENT_BUDGET",
@@ -196,7 +199,7 @@ pub async fn export_corridors(
             ),
             "retry_after_seconds": retry_after,
         });
-        
+
         return Ok((
             axum::http::StatusCode::TOO_MANY_REQUESTS,
             headers,
@@ -457,9 +460,12 @@ pub async fn export_anchors(
     let cost_limiter = app_state.cost_rate_limiter.clone();
 
     // Check if client has sufficient budget
-    if !cost_limiter.has_sufficient_budget(&client_key, tier, cost_estimate).await {
+    if !cost_limiter
+        .has_sufficient_budget(&client_key, tier, cost_estimate)
+        .await
+    {
         let retry_after = 24 * 3600;
-        
+
         let mut headers = HeaderMap::new();
         headers.insert(
             header::CONTENT_TYPE,
@@ -470,13 +476,13 @@ pub async fn export_anchors(
             HeaderValue::from_str(&retry_after.to_string())
                 .unwrap_or_else(|_| HeaderValue::from_static("86400")),
         );
-        
+
         let cost_headers = CostHeaders::from_state(
             &crate::models::cost::ClientCostState::new(0.0, tier),
             cost_estimate,
         );
         headers = add_cost_headers(headers, &cost_headers);
-        
+
         let body = serde_json::json!({
             "error": "RATE_LIMITED",
             "code": "INSUFFICIENT_BUDGET",
@@ -487,7 +493,7 @@ pub async fn export_anchors(
             ),
             "retry_after_seconds": retry_after,
         });
-        
+
         return Ok((
             axum::http::StatusCode::TOO_MANY_REQUESTS,
             headers,

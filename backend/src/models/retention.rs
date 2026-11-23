@@ -24,7 +24,7 @@ pub struct RetentionConfig {
 impl Default for RetentionConfig {
     fn default() -> Self {
         let mut table_configs = HashMap::new();
-        
+
         // Contract events: 30 days retention by default
         table_configs.insert(
             "contract_events".to_string(),
@@ -35,7 +35,7 @@ impl Default for RetentionConfig {
                 preserve_aggregates: true,
             },
         );
-        
+
         // Corridor metrics: 365 days retention (preserve aggregates)
         table_configs.insert(
             "corridor_metrics".to_string(),
@@ -46,7 +46,7 @@ impl Default for RetentionConfig {
                 preserve_aggregates: true,
             },
         );
-        
+
         Self {
             default_days: 30,
             table_configs,
@@ -171,7 +171,7 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = RetentionConfig::default();
-        
+
         assert_eq!(config.get_days("contract_events"), 30);
         assert_eq!(config.get_days("corridor_metrics"), 365);
         assert_eq!(config.get_days("unknown_table"), 30); // default
@@ -181,7 +181,7 @@ mod tests {
     fn test_table_retention() {
         let config = RetentionConfig::default();
         let table_config = config.get_table_config("contract_events");
-        
+
         assert_eq!(table_config.days, 30);
         assert_eq!(table_config.batch_size, 1000);
         assert_eq!(table_config.sleep_ms, 100);
@@ -194,7 +194,7 @@ mod tests {
         result.deleted_rows = 1000;
         result.batches_processed = 5;
         result.add_warning("Slow deletion detected");
-        
+
         assert_eq!(result.table, "test_table");
         assert_eq!(result.deleted_rows, 1000);
         assert_eq!(result.batches_processed, 5);

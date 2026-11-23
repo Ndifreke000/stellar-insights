@@ -625,9 +625,8 @@ impl GovernanceService {
     /// Reconcile DB vote tallies against on-chain event tallies (#2822)
     pub async fn reconcile_proposal(&self, proposal_id: &str) -> Result<ReconciliationReport> {
         let proposal = self.get_proposal(proposal_id).await?;
-        let (chain_for, chain_against, chain_abstain) = self
-            .compute_tallies_from_chain_events(proposal_id)
-            .await?;
+        let (chain_for, chain_against, chain_abstain) =
+            self.compute_tallies_from_chain_events(proposal_id).await?;
 
         let db_for = proposal.votes_for;
         let db_against = proposal.votes_against;

@@ -52,9 +52,7 @@ impl WebhookQueueManager {
     /// Get the next job for a specific endpoint (FIFO order)
     pub async fn get_next_job(&self, webhook_id: &str) -> Option<WebhookJob> {
         let mut queues = self.endpoint_queues.lock().await;
-        queues
-            .get_mut(webhook_id)
-            .and_then(|queue| queue.pop())
+        queues.get_mut(webhook_id).and_then(|queue| queue.pop())
     }
 
     /// Check if there are jobs for a specific endpoint
@@ -80,17 +78,19 @@ impl WebhookQueueManager {
     /// Get job count for a specific endpoint
     pub async fn get_job_count(&self, webhook_id: &str) -> usize {
         let queues = self.endpoint_queues.lock().await;
-        queues
-            .get(webhook_id)
-            .map(|q| q.len())
-            .unwrap_or(0)
+        queues.get(webhook_id).map(|q| q.len()).unwrap_or(0)
     }
 
     /// Start the queue manager - spawns parallel dispatcher tasks
     pub async fn start(&mut self) {
         if self
             .running
-            .compare_exchange(false, true, std::sync::atomic::Ordering::SeqCst, std::sync::atomic::Ordering::SeqCst)
+            .compare_exchange(
+                false,
+                true,
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+            )
             .is_err()
         {
             // Already running
@@ -140,7 +140,8 @@ impl WebhookQueueManager {
 
     /// Stop the queue manager
     pub fn stop(&self) {
-        self.running.store(false, std::sync::atomic::Ordering::SeqCst);
+        self.running
+            .store(false, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -188,7 +189,9 @@ async fn process_job(service: &Arc<WebhookService>, job: &WebhookJob) -> anyhow:
         }
         Err(e) => {
             // Increment consecutive failures
-            let failures = service.increment_consecutive_failures(&job.webhook_id).await?;
+            let failures = service
+                .increment_consecutive_failures(&job.webhook_id)
+                .await?;
 
             // Check if webhook should be auto-disabled
             if failures >= webhook.max_consecutive_failures {
@@ -333,12 +336,11 @@ async fn deliver_webhook(service: &WebhookService, job: &WebhookJob) -> anyhow::
 
 /// Get current retry count for an event
 async fn get_event_retries(service: &WebhookService, event_id: &str) -> anyhow::Result<i32> {
-    let retries: Option<i64> = sqlx::query_scalar(
-        "SELECT retries FROM webhook_events WHERE id = ?",
-    )
-    .bind(event_id)
-    .fetch_optional(&service.db)
-    .await?;
+    let retries: Option<i64> =
+        sqlx::query_scalar("SELECT retries FROM webhook_events WHERE id = ?")
+            .bind(event_id)
+            .fetch_optional(&service.db)
+            .await?;
 
     Ok(retries.unwrap_or(0) as i32)
 }

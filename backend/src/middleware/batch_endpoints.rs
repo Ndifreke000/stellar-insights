@@ -46,9 +46,7 @@ use crate::auth_middleware::{
 };
 use crate::error::{ApiError, ApiResult, ErrorDetail};
 use crate::ip_whitelist_middleware::IpWhitelistConfig;
-use crate::middleware::field_selection_parameter::{
-    extract_fields_query, FieldSelectionParameter,
-};
+use crate::middleware::field_selection_parameter::{extract_fields_query, FieldSelectionParameter};
 use crate::models::{
     batch_endpoints::{
         BatchConfig, BatchHttpRequest, BatchHttpResponse, BatchItemResult, BatchRequest,
@@ -529,7 +527,8 @@ impl BatchDispatcher {
             if let Some((ref key_id, limit)) = api_key_info {
                 let should_debit_key = !(sub.index == 0 && outer_already_debited_first);
                 if should_debit_key {
-                    let (allowed, _info) = self.rate_limiter.rate_limit_api_key(key_id, limit).await;
+                    let (allowed, _info) =
+                        self.rate_limiter.rate_limit_api_key(key_id, limit).await;
                     if !allowed {
                         failed += 1;
                         results.push(BatchSubResponse {
@@ -1038,7 +1037,10 @@ mod tests {
         assert!(!sanitized.contains_key("Authorization"));
         assert!(!sanitized.contains_key("X-Forwarded-For"));
         assert!(!sanitized.contains_key("Cookie"));
-        assert_eq!(sanitized.get("Accept").map(String::as_str), Some("application/json"));
+        assert_eq!(
+            sanitized.get("Accept").map(String::as_str),
+            Some("application/json")
+        );
     }
 
     #[test]
@@ -1074,6 +1076,9 @@ mod tests {
         ];
 
         let err = dispatcher.validate_batch(&reqs).unwrap_err();
-        assert_eq!(err.to_error_response(None).error.code, "BATCH_COST_EXCEEDED");
+        assert_eq!(
+            err.to_error_response(None).error.code,
+            "BATCH_COST_EXCEEDED"
+        );
     }
 }

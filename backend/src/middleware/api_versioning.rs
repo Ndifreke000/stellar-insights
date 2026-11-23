@@ -423,11 +423,7 @@ impl ApiVersionPolicy {
         negotiated_via_accept: bool,
     ) -> ResolvedRouteVersion {
         let prefix = format!("/api/{}", version.as_str());
-        if let Some(entry) = self
-            .sorted_routes
-            .iter()
-            .find(|r| r.path_prefix == prefix)
-        {
+        if let Some(entry) = self.sorted_routes.iter().find(|r| r.path_prefix == prefix) {
             return ResolvedRouteVersion {
                 version: entry.version,
                 lifecycle: entry.lifecycle,
@@ -452,10 +448,7 @@ impl ApiVersionPolicy {
 /// Extract `<N>` from a URL starting with `/api/v<N>` followed by end-of-path or `/`.
 fn extract_url_version_number(path: &str) -> Option<u32> {
     let rest = path.strip_prefix("/api/v")?;
-    let digits_end = rest
-        .bytes()
-        .take_while(u8::is_ascii_digit)
-        .count();
+    let digits_end = rest.bytes().take_while(u8::is_ascii_digit).count();
     if digits_end == 0 {
         return None;
     }
@@ -911,6 +904,9 @@ mod tests {
     #[test]
     fn v1_sunset_constant_matches_rfc8594_date() {
         let dt = chrono::DateTime::from_timestamp(V1_SUNSET_UNIX, 0).unwrap();
-        assert_eq!(dt.format("%Y-%m-%dT%H:%M:%SZ").to_string(), "2026-12-31T00:00:00Z");
+        assert_eq!(
+            dt.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+            "2026-12-31T00:00:00Z"
+        );
     }
 }

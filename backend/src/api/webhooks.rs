@@ -288,7 +288,7 @@ pub async fn get_delivery_logs(
     query: Query<DeliveryLogsQuery>,
 ) -> Result<Response, WebhookApiError> {
     let service = WebhookService::new(db);
-    
+
     // Verify webhook ownership
     let webhook = service
         .get_webhook(&webhook_id)
@@ -391,7 +391,7 @@ pub async fn enable_webhook(
     Path(webhook_id): Path<String>,
 ) -> Result<Response, WebhookApiError> {
     let service = WebhookService::new(db);
-    
+
     // Verify webhook ownership
     let webhook = service
         .get_webhook(&webhook_id)
@@ -452,7 +452,7 @@ pub async fn rotate_secrets(
     Path(webhook_id): Path<String>,
 ) -> Result<Response, WebhookApiError> {
     let service = WebhookService::new(db);
-    
+
     // Verify webhook ownership
     let webhook = service
         .get_webhook(&webhook_id)

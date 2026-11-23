@@ -106,11 +106,7 @@ const DELETE_TABLES: &[(&str, &str)] = &[
 /// deleted. A missing table or column is skipped, not fatal.
 const ANONYMIZE_TABLES: &[&str] = &["admin_audit_log", "vault_audit_log", "audit_log"];
 
-async fn erase_sqlite(
-    pool: &SqlitePool,
-    user_id: &str,
-    request_id: &str,
-) -> Result<StoreOutcome> {
+async fn erase_sqlite(pool: &SqlitePool, user_id: &str, request_id: &str) -> Result<StoreOutcome> {
     let mut tx = pool.begin().await.context("begin erasure tx")?;
     let mut total: i64 = 0;
     let mut notes: Vec<String> = Vec::new();
@@ -118,7 +114,11 @@ async fn erase_sqlite(
     for &(table, column) in DELETE_TABLES {
         // Table/column names are compile-time constants; user_id is bound.
         let sql = format!("DELETE FROM {table} WHERE {column} = ?");
-        match sqlx::query(sqlx::AssertSqlSafe(sql)).bind(user_id).execute(&mut *tx).await {
+        match sqlx::query(sqlx::AssertSqlSafe(sql))
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await
+        {
             Ok(r) => total += r.rows_affected() as i64,
             Err(e) => {
                 notes.push(format!("{table}: skipped ({e})"));
@@ -129,7 +129,11 @@ async fn erase_sqlite(
 
     for &table in ANONYMIZE_TABLES {
         let sql = format!("UPDATE {table} SET user_id = 'erased' WHERE user_id = ?");
-        match sqlx::query(sqlx::AssertSqlSafe(sql)).bind(user_id).execute(&mut *tx).await {
+        match sqlx::query(sqlx::AssertSqlSafe(sql))
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await
+        {
             Ok(r) => total += r.rows_affected() as i64,
             Err(e) => notes.push(format!("{table}: skipped ({e})")),
         }
@@ -201,15 +205,16 @@ async fn erase_notification_stores(pool: &SqlitePool, user_id: &str) -> Result<S
             .iter()
             .map(|c| format!("{} = ?", c.get::<String, _>("name")))
             .collect();
-        let sql = format!(
-            "DELETE FROM {table} WHERE {}",
-            predicates.join(" OR ")
-        );
+        let sql = format!("DELETE FROM {table} WHERE {}", predicates.join(" OR "));
         let mut q = sqlx::query(sqlx::AssertSqlSafe(sql));
         for _ in &predicates {
             q = q.bind(user_id);
         }
-        let result = q.execute(pool).await.map(|r| r.rows_affected() as i64).unwrap_or(0);
+        let result = q
+            .execute(pool)
+            .await
+            .map(|r| r.rows_affected() as i64)
+            .unwrap_or(0);
         total += result;
         seen.push(table);
     }
@@ -229,8 +234,7 @@ async fn erase_notification_stores(pool: &SqlitePool, user_id: &str) -> Result<S
 /// a SCAN for the user id catches every variant without a key registry.
 async fn erase_redis(user_id: &str) -> Result<StoreOutcome> {
     let redis_configured = std::env::var("REDIS_URL").is_ok();
-    let url = std::env::var("REDIS_URL")
-        .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    let url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
     let client = redis::Client::open(url.as_str()).context("invalid REDIS_URL")?;
     let mut conn = match client.get_multiplexed_async_connection().await {
         Ok(conn) => conn,
@@ -301,19 +305,16 @@ impl ErasureService {
     /// Execute a full erasure for one deletion request. Idempotent: every
     /// store operation is a delete/anonymize, so retries are safe.
     pub async fn run_erasure(&self, request_id: &str) -> Result<ErasureJobView> {
-        let request = sqlx::query(
-            "SELECT id, user_id, status FROM data_deletion_requests WHERE id = ?",
-        )
-        .bind(request_id)
-        .fetch_optional(&self.pool)
-        .await?
-        .context("deletion request not found")?;
+        let request =
+            sqlx::query("SELECT id, user_id, status FROM data_deletion_requests WHERE id = ?")
+                .bind(request_id)
+                .fetch_optional(&self.pool)
+                .await?
+                .context("deletion request not found")?;
 
         let status: String = request.get("status");
         if status != "scheduled" {
-            anyhow::bail!(
-                "deletion request {request_id} is '{status}', expected 'scheduled'"
-            );
+            anyhow::bail!("deletion request {request_id} is '{status}', expected 'scheduled'");
         }
         let user_id: String = request.get("user_id");
         let job_id = Uuid::new_v4().to_string();
@@ -345,7 +346,10 @@ impl ErasureService {
                 "sqlite",
                 Box::pin(erase_sqlite(&self.pool, &user_id, request_id)),
             ),
-            ("notifications", Box::pin(erase_notification_stores(&self.pool, &user_id))),
+            (
+                "notifications",
+                Box::pin(erase_notification_stores(&self.pool, &user_id)),
+            ),
             ("redis", Box::pin(erase_redis(&user_id))),
             // Crypto-shred runs last: nothing afterwards needs the DEK.
             (
@@ -571,7 +575,9 @@ impl ErasureService {
             let due = due
                 || scheduled
                     .as_deref()
-                    .and_then(|s| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").ok())
+                    .and_then(|s| {
+                        chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").ok()
+                    })
                     .map(|d| d.and_utc() <= now)
                     .unwrap_or(false);
             if !due {
@@ -650,11 +656,13 @@ mod tests {
         .execute(pool)
         .await
         .unwrap();
-        sqlx::query("INSERT INTO user_consents (id, user_id, consent_type) VALUES ('c1', ?, 'analytics')")
-            .bind(user_id)
-            .execute(pool)
-            .await
-            .unwrap();
+        sqlx::query(
+            "INSERT INTO user_consents (id, user_id, consent_type) VALUES ('c1', ?, 'analytics')",
+        )
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .unwrap();
         sqlx::query("INSERT INTO admin_audit_log (id, user_id) VALUES ('a1', ?)")
             .bind(user_id)
             .execute(pool)
@@ -701,9 +709,9 @@ mod tests {
             let n: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
                 "SELECT COUNT(*) FROM {t} WHERE user_id = 'u1'"
             )))
-                .fetch_one(&pool)
-                .await
-                .unwrap();
+            .fetch_one(&pool)
+            .await
+            .unwrap();
             assert_eq!(n, 0, "{t} still has rows");
         }
         let uname: String = sqlx::query_scalar("SELECT username FROM users WHERE id = 'u1'")
@@ -711,10 +719,11 @@ mod tests {
             .await
             .unwrap();
         assert!(uname.starts_with("erased_"));
-        let audit: String = sqlx::query_scalar("SELECT user_id FROM admin_audit_log WHERE id = 'a1'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+        let audit: String =
+            sqlx::query_scalar("SELECT user_id FROM admin_audit_log WHERE id = 'a1'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
         assert_eq!(audit, "erased");
         // DEK destroyed.
         assert!(!keys.has_key("u1").await.unwrap());

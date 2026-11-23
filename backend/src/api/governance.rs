@@ -38,7 +38,10 @@ pub fn routes(service: Arc<GovernanceService>, sep10_service: Arc<Sep10Service>)
         ))
         // Public routes
         .route("/proposals", get(list_proposals))
-        .route("/proposals/reconciliation", get(get_reconciliation_discrepancies))
+        .route(
+            "/proposals/reconciliation",
+            get(get_reconciliation_discrepancies),
+        )
         .route("/proposals/{id}/reconcile", post(reconcile_proposal))
         .route("/proposals/{id}", get(get_proposal))
         .route("/proposals/{id}/votes", get(get_votes))

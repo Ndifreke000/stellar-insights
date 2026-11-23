@@ -822,7 +822,10 @@ mod tests {
         let report = detector.check_same_code_different_issuer("USDC", "GUNKNOWN");
 
         assert!(report.is_some());
-        assert_eq!(report.unwrap().report_type, ImpersonationReportType::SameCodeDifferentIssuer);
+        assert_eq!(
+            report.unwrap().report_type,
+            ImpersonationReportType::SameCodeDifferentIssuer
+        );
     }
 
     #[test]
@@ -831,7 +834,10 @@ mod tests {
         let report = detector.check_lookalike_domain("usdc.com", "u5dc.com");
 
         assert!(report.is_some());
-        assert_eq!(report.unwrap().report_type, ImpersonationReportType::HomoglyphDomain);
+        assert_eq!(
+            report.unwrap().report_type,
+            ImpersonationReportType::HomoglyphDomain
+        );
     }
 
     #[test]

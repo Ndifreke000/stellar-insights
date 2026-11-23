@@ -12,7 +12,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use payraider_backend::{
-    middleware::cost_rate_limiter::{CostRateLimiter, extract_client_key, get_client_tier},
+    middleware::cost_rate_limiter::{extract_client_key, get_client_tier, CostRateLimiter},
     models::cost::{CostConfig, CostHeaders},
     state::AppState,
 };
@@ -33,14 +33,21 @@ fn test_app_state(pool: &sqlx::SqlitePool) -> AppState {
         std::env::set_var("STELLAR_HORIZON_URL_MAINNET", "https://horizon.example.com");
     }
     let db = std::sync::Arc::new(payraider_backend::database::Database::new(pool.clone()));
-    let rpc = std::sync::Arc::new(payraider_backend::rpc::StellarRpcClient::new_with_defaults(true));
+    let rpc = std::sync::Arc::new(payraider_backend::rpc::StellarRpcClient::new_with_defaults(
+        true,
+    ));
     AppState::new(
         db.clone(),
-        std::sync::Arc::new(payraider_backend::cache::CacheManager::new_in_memory_for_tests(
-            payraider_backend::cache::CacheConfig::default(),
-        )),
+        std::sync::Arc::new(
+            payraider_backend::cache::CacheManager::new_in_memory_for_tests(
+                payraider_backend::cache::CacheConfig::default(),
+            ),
+        ),
         std::sync::Arc::new(payraider_backend::websocket::WsState::new()),
-        std::sync::Arc::new(payraider_backend::ingestion::DataIngestionService::new(rpc.clone(), db)),
+        std::sync::Arc::new(payraider_backend::ingestion::DataIngestionService::new(
+            rpc.clone(),
+            db,
+        )),
         rpc,
     )
 }
@@ -48,10 +55,13 @@ fn test_app_state(pool: &sqlx::SqlitePool) -> AppState {
 #[tokio::test]
 async fn test_cost_estimate_headers() {
     let config = CostConfig::default();
-    let state = payraider_backend::models::cost::ClientCostState::new(100.0, payraider_backend::models::cost::ClientTier::Authenticated);
-    
+    let state = payraider_backend::models::cost::ClientCostState::new(
+        100.0,
+        payraider_backend::models::cost::ClientTier::Authenticated,
+    );
+
     let cost_headers = CostHeaders::from_state(&state, 40.0);
-    
+
     assert_eq!(cost_headers.cost_estimate, 40.0);
     assert_eq!(cost_headers.remaining_budget, 60.0);
     assert_eq!(cost_headers.total_budget, 1000.0);
@@ -61,15 +71,15 @@ async fn test_cost_estimate_headers() {
 #[tokio::test]
 async fn test_cost_calculation() {
     let config = CostConfig::default();
-    
+
     // Single corridor, 30 days = 10 + 30 = 40
     let cost = config.export_corridor_single_cost(30);
     assert!((cost - 40.0).abs() < f64::EPSILON);
-    
+
     // Single corridor, 365 days = 10 + 365 = 375
     let cost = config.export_corridor_single_cost(365);
     assert!((cost - 375.0).abs() < f64::EPSILON);
-    
+
     // All corridors, 1 day = 10000 + 1 = 10001
     let cost = config.export_corridor_all_cost(1);
     assert!((cost - 10001.0).abs() < f64::EPSILON);
@@ -78,7 +88,7 @@ async fn test_cost_calculation() {
 #[tokio::test]
 async fn test_client_budgets() {
     let config = CostConfig::default();
-    
+
     assert_eq!(
         payraider_backend::models::cost::ClientTier::Anonymous.budget(&config),
         100.0
@@ -96,17 +106,25 @@ async fn test_client_budgets() {
 #[tokio::test]
 async fn test_cost_rate_limiter_debit() {
     let limiter = CostRateLimiter::new();
-    
+
     // Debit within budget
     let result = limiter
-        .debit("test-client", payraider_backend::models::cost::ClientTier::Authenticated, 100.0)
+        .debit(
+            "test-client",
+            payraider_backend::models::cost::ClientTier::Authenticated,
+            100.0,
+        )
         .await;
     assert!(result.is_ok());
     assert!(result.unwrap());
-    
+
     // Debit beyond remaining budget
     let result = limiter
-        .debit("test-client", payraider_backend::models::cost::ClientTier::Authenticated, 1000.0)
+        .debit(
+            "test-client",
+            payraider_backend::models::cost::ClientTier::Authenticated,
+            1000.0,
+        )
         .await;
     assert!(result.is_ok());
     assert!(!result.unwrap());
@@ -149,17 +167,25 @@ async fn test_client_tier() {
 async fn test_budget_insufficient_error_response() {
     let limiter = CostRateLimiter::new();
     let _app_state = mock_app_state().await;
-    
+
     // Exhaust anonymous budget (100 units)
     let result = limiter
-        .debit("anonymous-client", payraider_backend::models::cost::ClientTier::Anonymous, 100.0)
+        .debit(
+            "anonymous-client",
+            payraider_backend::models::cost::ClientTier::Anonymous,
+            100.0,
+        )
         .await;
     assert!(result.is_ok());
     assert!(result.unwrap());
-    
+
     // Try to debit more
     let result = limiter
-        .debit("anonymous-client", payraider_backend::models::cost::ClientTier::Anonymous, 50.0)
+        .debit(
+            "anonymous-client",
+            payraider_backend::models::cost::ClientTier::Anonymous,
+            50.0,
+        )
         .await;
     assert!(result.is_ok());
     assert!(!result.unwrap());

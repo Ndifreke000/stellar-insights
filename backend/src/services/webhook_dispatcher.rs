@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::webhooks::queue::{WebhookJob, WebhookQueueManager};
 use crate::webhooks::{WebhookEventEnvelope, WebhookService};
-use crate::webhooks::{MAX_DISPATCH_RETRIES, WebhookSignature};
+use crate::webhooks::{WebhookSignature, MAX_DISPATCH_RETRIES};
 
 /// Webhook dispatcher - sends events to webhooks asynchronously
 pub struct WebhookDispatcher {
@@ -212,7 +212,9 @@ impl WebhookDispatcher {
             );
         } else {
             // Increment consecutive failures
-            let failures = service.increment_consecutive_failures(&job.webhook_id).await?;
+            let failures = service
+                .increment_consecutive_failures(&job.webhook_id)
+                .await?;
 
             // Check if webhook should be auto-disabled
             if failures >= webhook.max_consecutive_failures {
@@ -263,10 +265,11 @@ impl WebhookDispatcher {
 
     /// Get current retry count for an event
     async fn get_event_retries(&self, event_id: &str) -> Result<i32> {
-        let retries: Option<i64> = sqlx::query_scalar("SELECT retries FROM webhook_events WHERE id = ?")
-            .bind(event_id)
-            .fetch_optional(&self.db)
-            .await?;
+        let retries: Option<i64> =
+            sqlx::query_scalar("SELECT retries FROM webhook_events WHERE id = ?")
+                .bind(event_id)
+                .fetch_optional(&self.db)
+                .await?;
 
         Ok(retries.unwrap_or(0) as i32)
     }

@@ -27,9 +27,11 @@ use crate::database::Database;
 use crate::error::{ApiError, ApiResult};
 use crate::rate_limit::{OuterRateLimitCharged, RateLimitError, RateLimiter};
 use crate::rpc::StellarRpcClient;
-use crate::services::price_feed::PriceFeedClient;
 use crate::services::amm_simulation::AmmPool;
-use crate::services::path_simulation::{PathSimulationService, ORDER_BOOK_CACHE_PREFIX, ORDER_BOOK_TTL_SECONDS};
+use crate::services::path_simulation::{
+    PathSimulationService, ORDER_BOOK_CACHE_PREFIX, ORDER_BOOK_TTL_SECONDS,
+};
+use crate::services::price_feed::PriceFeedClient;
 
 /// Cache key for the corridor table the check scores against.
 pub(crate) const CORRIDOR_TABLE_CACHE_KEY: &str = "preflight:corridors";
@@ -555,11 +557,7 @@ async fn run(
     let corridors = load_corridors(cache, rpc_client, price_feed).await?;
 
     // First evaluate with pure function
-    let mut response = evaluate(
-        &corridors,
-        request,
-        chrono::Utc::now().to_rfc3339(),
-    );
+    let mut response = evaluate(&corridors, request, chrono::Utc::now().to_rfc3339());
 
     // Then add slippage estimation if we have an amount and corridor
     if let (Some(amount_usd), Some(ref corridor)) = (request.amount_usd, &response.corridor) {
@@ -569,7 +567,8 @@ async fn run(
             &corridor.source_asset,
             &corridor.destination_asset,
             amount_usd,
-        ).await
+        )
+        .await
         {
             response.slippage_estimate = Some(slippage);
         }
@@ -693,7 +692,9 @@ pub async fn preflight_batch(
             );
             let endpoint = outer_rate_limit
                 .as_ref()
-                .map_or("/api/v1/preflight/batch", |Extension(m)| m.endpoint.as_str());
+                .map_or("/api/v1/preflight/batch", |Extension(m)| {
+                    m.endpoint.as_str()
+                });
             let client = limiter
                 .resolve_client_identifier(
                     bearer.clone(),

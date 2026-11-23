@@ -70,9 +70,9 @@ async fn verify_asset(
         .verify_asset_with_impersonation(&code, &issuer)
         .await
         .map_err(|e| {
-        tracing::error!("Asset verification failed: {}", e);
-        ApiError::internal("VERIFICATION_FAILED", "Failed to verify asset")
-    })?;
+            tracing::error!("Asset verification failed: {}", e);
+            ApiError::internal("VERIFICATION_FAILED", "Failed to verify asset")
+        })?;
 
     // Determine if there are impersonation risks
     let has_impersonation_risk = !result.impersonation_reports.is_empty();

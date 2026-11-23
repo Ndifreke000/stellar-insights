@@ -677,7 +677,11 @@ impl RateLimiter {
             store.insert(key.to_string(), (units, now + 60));
             (true, limit.saturating_sub(units), 60)
         } else if count.saturating_add(units) > limit {
-            (false, limit.saturating_sub(count), (expiry - now).max(1) as u32)
+            (
+                false,
+                limit.saturating_sub(count),
+                (expiry - now).max(1) as u32,
+            )
         } else {
             let new_count = count.saturating_add(units);
             store.insert(key.to_string(), (new_count, expiry));

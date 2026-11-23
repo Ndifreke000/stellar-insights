@@ -1332,7 +1332,10 @@ pub async fn cleanup_old_events_batched(
         }
 
         total_deleted += deleted;
-        info!("Deleted {} old events (batch total: {})", deleted, total_deleted);
+        info!(
+            "Deleted {} old events (batch total: {})",
+            deleted, total_deleted
+        );
 
         if sleep_ms > 0 {
             tokio::time::sleep(std::time::Duration::from_millis(sleep_ms)).await;
@@ -1374,12 +1377,15 @@ pub async fn incremental_vacuum(
         sqlx::query(sqlx::AssertSqlSafe(format!(
             "PRAGMA incremental_vacuum({pages_to_vacuum})"
         )))
-            .execute(pool)
-            .await
-            .context("Failed to vacuum pages")?;
+        .execute(pool)
+        .await
+        .context("Failed to vacuum pages")?;
 
         total_pages_freed += pages_to_vacuum;
-        info!("Vacuumed {} pages (total: {})", pages_to_vacuum, total_pages_freed);
+        info!(
+            "Vacuumed {} pages (total: {})",
+            pages_to_vacuum, total_pages_freed
+        );
 
         if total_pages_freed >= max_pages {
             info!("Reached max pages to vacuum ({})", max_pages);
@@ -1389,7 +1395,10 @@ pub async fn incremental_vacuum(
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
 
-    info!("Completed incremental VACUUM: {} pages freed", total_pages_freed);
+    info!(
+        "Completed incremental VACUUM: {} pages freed",
+        total_pages_freed
+    );
     Ok(total_pages_freed)
 }
 
@@ -1398,7 +1407,10 @@ pub async fn rollup_events_to_aggregates(
     pool: &sqlx::SqlitePool,
     cutoff_datetime: &str,
 ) -> Result<i64> {
-    info!("Rolling up events before {} to corridor metrics", cutoff_datetime);
+    info!(
+        "Rolling up events before {} to corridor metrics",
+        cutoff_datetime
+    );
 
     let rolled_up = sqlx::query(
         r"

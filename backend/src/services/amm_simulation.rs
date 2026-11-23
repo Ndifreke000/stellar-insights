@@ -75,26 +75,22 @@ impl AmmPool {
     }
 
     /// Calculate price impact for a given input amount
-    pub fn calculate_price_impact(
-        &self,
-        input_amount: f64,
-        token0_is_selling: bool,
-    ) -> f64 {
+    pub fn calculate_price_impact(&self, input_amount: f64, token0_is_selling: bool) -> f64 {
         let output = self.calculate_output_for_input(input_amount, token0_is_selling);
-        
+
         if input_amount <= 0.0 {
             return 0.0;
         }
 
         let effective_price = output / input_amount;
-        
+
         // Compare to spot price (reserve_out / reserve_in)
         let spot_price = if token0_is_selling {
-            self.reserve1.parse::<f64>().unwrap_or(0.0) / 
-            self.reserve0.parse::<f64>().unwrap_or(1.0)
+            self.reserve1.parse::<f64>().unwrap_or(0.0)
+                / self.reserve0.parse::<f64>().unwrap_or(1.0)
         } else {
-            self.reserve0.parse::<f64>().unwrap_or(0.0) / 
-            self.reserve1.parse::<f64>().unwrap_or(1.0)
+            self.reserve0.parse::<f64>().unwrap_or(0.0)
+                / self.reserve1.parse::<f64>().unwrap_or(1.0)
         };
 
         if spot_price <= 0.0 {
@@ -148,7 +144,7 @@ impl OrderBook {
     /// Calculate price impact for a given trade amount
     pub fn calculate_price_impact(&self, trade_amount: f64) -> f64 {
         let (executed_amount, used_entries) = self.walk_for_buy_amount(trade_amount);
-        
+
         if trade_amount <= 0.0 || used_entries.is_empty() {
             return 0.0;
         }
@@ -158,9 +154,15 @@ impl OrderBook {
 
         // Get the best price (first entry)
         let best_price: f64 = if trade_amount > 0.0 {
-            self.asks.first().and_then(|e| e.price.parse().ok()).unwrap_or(0.0)
+            self.asks
+                .first()
+                .and_then(|e| e.price.parse().ok())
+                .unwrap_or(0.0)
         } else {
-            self.bids.first().and_then(|e| e.price.parse().ok()).unwrap_or(0.0)
+            self.bids
+                .first()
+                .and_then(|e| e.price.parse().ok())
+                .unwrap_or(0.0)
         };
 
         if best_price <= 0.0 {
@@ -248,15 +250,15 @@ pub fn build_path(
 ) -> Option<PaymentPath> {
     // Simple greedy path finder - starts from source and follows segments
     // In production, this would use a proper graph traversal algorithm
-    
+
     let mut current_asset = source_asset.clone();
     let mut path_segments = Vec::new();
     let mut visited = std::collections::HashSet::new();
 
     while current_asset != *destination_asset {
         let found = segments.iter().find(|s| {
-            (s.selling_asset() == &current_asset || s.buying_asset() == &current_asset) &&
-            !visited.contains(s)
+            (s.selling_asset() == &current_asset || s.buying_asset() == &current_asset)
+                && !visited.contains(s)
         })?;
 
         visited.insert(found);
@@ -312,11 +314,13 @@ mod tests {
             token1: Asset {
                 asset_type: "credit_alphanum4".to_string(),
                 asset_code: Some("USDC".to_string()),
-                asset_issuer: Some("GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".to_string()),
+                asset_issuer: Some(
+                    "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".to_string(),
+                ),
             },
             reserve0: "10000000000".to_string(), // 10000 XLM in stroops
             reserve1: "10000000000".to_string(), // 10000 USDC in stroops
-            fee_bp: 30, // 0.3%
+            fee_bp: 30,                          // 0.3%
         };
 
         // Selling 1000 XLM should get slightly less than 1000 USDC due to fees
@@ -335,7 +339,9 @@ mod tests {
             token1: Asset {
                 asset_type: "credit_alphanum4".to_string(),
                 asset_code: Some("USDC".to_string()),
-                asset_issuer: Some("GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".to_string()),
+                asset_issuer: Some(
+                    "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".to_string(),
+                ),
             },
             reserve0: "1000000000000".to_string(), // 100000 XLM
             reserve1: "1000000000000".to_string(), // 100000 USDC
@@ -344,11 +350,18 @@ mod tests {
 
         // Small trade should have minimal price impact
         let impact = pool.calculate_price_impact(100.0, true);
-        assert!(impact < 0.001, "Small trade impact should be low: {}", impact);
+        assert!(
+            impact < 0.001,
+            "Small trade impact should be low: {}",
+            impact
+        );
 
         // Large trade should have higher price impact
         let impact_large = pool.calculate_price_impact(10000.0, true);
-        assert!(impact_large > impact, "Large trade should have higher impact");
+        assert!(
+            impact_large > impact,
+            "Large trade should have higher impact"
+        );
     }
 
     #[test]
@@ -364,12 +377,10 @@ mod tests {
                     amount: "100.0".to_string(),
                 },
             ],
-            asks: vec![
-                OrderBookEntry {
-                    price: "101.0".to_string(),
-                    amount: "30.0".to_string(),
-                },
-            ],
+            asks: vec![OrderBookEntry {
+                price: "101.0".to_string(),
+                amount: "30.0".to_string(),
+            }],
             base: Asset {
                 asset_type: "native".to_string(),
                 asset_code: None,
@@ -378,7 +389,9 @@ mod tests {
             counter: Asset {
                 asset_type: "credit_alphanum4".to_string(),
                 asset_code: Some("USDC".to_string()),
-                asset_issuer: Some("GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".to_string()),
+                asset_issuer: Some(
+                    "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN".to_string(),
+                ),
             },
         };
 

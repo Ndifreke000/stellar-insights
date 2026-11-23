@@ -755,13 +755,12 @@ async fn get_erasure_status(
     Path(id): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     // Ownership check: the request must belong to the caller.
-    let owner: Option<String> = sqlx::query_scalar(
-        "SELECT user_id FROM data_deletion_requests WHERE id = ?",
-    )
-    .bind(&id)
-    .fetch_optional(&pool)
-    .await
-    .map_err(ApiError::from)?;
+    let owner: Option<String> =
+        sqlx::query_scalar("SELECT user_id FROM data_deletion_requests WHERE id = ?")
+            .bind(&id)
+            .fetch_optional(&pool)
+            .await
+            .map_err(ApiError::from)?;
 
     match owner {
         Some(u) if u == auth_user.user_id => {}

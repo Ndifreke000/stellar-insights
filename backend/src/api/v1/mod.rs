@@ -10,9 +10,7 @@ use crate::ip_whitelist_middleware::IpWhitelistConfig;
 use crate::middleware::api_versioning::{
     api_versioning_middleware, ApiVersionPolicy, ApiVersionSummary,
 };
-use crate::middleware::batch_endpoints::{
-    batch_http_handler, BatchDispatcher, BatchHandlerState,
-};
+use crate::middleware::batch_endpoints::{batch_http_handler, BatchDispatcher, BatchHandlerState};
 use crate::middleware::field_selection_parameter::{
     field_selection_middleware, FieldSelectionParameter,
 };

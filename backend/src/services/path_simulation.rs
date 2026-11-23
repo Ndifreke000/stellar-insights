@@ -12,7 +12,7 @@ use crate::rpc::horizon::models::{HorizonPath, HorizonPathEntry};
 use crate::rpc::stellar::Asset;
 use crate::rpc::StellarRpcClient;
 use crate::services::amm_simulation::{
-    AmmPool, PathSegment, build_path, build_path as amm_build_path,
+    build_path, build_path as amm_build_path, AmmPool, PathSegment,
 };
 
 /// Cache key prefix for order books
@@ -52,7 +52,9 @@ impl PathSimulationResult {
         if self.horizon_destination_amount <= 0.0 {
             return 0.0;
         }
-        (self.simulated_destination_amount - self.horizon_destination_amount) / self.horizon_destination_amount * 100.0
+        (self.simulated_destination_amount - self.horizon_destination_amount)
+            / self.horizon_destination_amount
+            * 100.0
     }
 }
 
@@ -89,7 +91,10 @@ impl PathSimulationService {
         buying: &Asset,
         limit: u32,
     ) -> Result<crate::rpc::horizon::models::OrderBook, anyhow::Error> {
-        let cache_key = format!("{}{}:{}:{}", ORDER_BOOK_CACHE_PREFIX, selling, buying, limit);
+        let cache_key = format!(
+            "{}{}:{}:{}",
+            ORDER_BOOK_CACHE_PREFIX, selling, buying, limit
+        );
 
         // Try cache first
         if let Ok(Some(entry)) = self.cache.get::<OrderBookCacheEntry>(&cache_key).await {

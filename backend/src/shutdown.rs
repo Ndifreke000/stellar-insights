@@ -532,9 +532,7 @@ mod tests {
     #[tokio::test]
     async fn run_phase_completes_within_deadline() {
         let coord = ShutdownCoordinator::new(fast_config());
-        let done = coord
-            .run_phase(ShutdownPhase::DrainHttp, async {})
-            .await;
+        let done = coord.run_phase(ShutdownPhase::DrainHttp, async {}).await;
         assert!(done);
     }
 

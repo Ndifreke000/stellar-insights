@@ -21,14 +21,21 @@ fn test_app_state(pool: &SqlitePool) -> AppState {
         std::env::set_var("STELLAR_HORIZON_URL_MAINNET", "https://horizon.example.com");
     }
     let db = std::sync::Arc::new(payraider_backend::database::Database::new(pool.clone()));
-    let rpc = std::sync::Arc::new(payraider_backend::rpc::StellarRpcClient::new_with_defaults(true));
+    let rpc = std::sync::Arc::new(payraider_backend::rpc::StellarRpcClient::new_with_defaults(
+        true,
+    ));
     AppState::new(
         db.clone(),
-        std::sync::Arc::new(payraider_backend::cache::CacheManager::new_in_memory_for_tests(
-            payraider_backend::cache::CacheConfig::default(),
-        )),
+        std::sync::Arc::new(
+            payraider_backend::cache::CacheManager::new_in_memory_for_tests(
+                payraider_backend::cache::CacheConfig::default(),
+            ),
+        ),
         std::sync::Arc::new(payraider_backend::websocket::WsState::new()),
-        std::sync::Arc::new(payraider_backend::ingestion::DataIngestionService::new(rpc.clone(), db)),
+        std::sync::Arc::new(payraider_backend::ingestion::DataIngestionService::new(
+            rpc.clone(),
+            db,
+        )),
         rpc,
     )
 }
@@ -36,10 +43,7 @@ fn test_app_state(pool: &SqlitePool) -> AppState {
 /// Create a test database pool with migrations.
 async fn migrated_pool() -> SqlitePool {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    sqlx::migrate!("./migrations")
-        .run(&pool)
-        .await
-        .unwrap();
+    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
     pool
 }
 
@@ -106,10 +110,10 @@ async fn insert_corridor_metrics(pool: &SqlitePool, count: i64, days_old: i64) {
 #[tokio::test]
 async fn test_retention_deletes_old_events_in_batches() {
     let pool = migrated_pool().await;
-    
+
     // Insert 5000 old events
     insert_contract_events(&pool, 5000, 60).await;
-    
+
     // Verify initial count
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM contract_events")
         .fetch_one(&pool)
@@ -139,28 +143,33 @@ async fn test_retention_deletes_old_events_in_batches() {
     );
 
     let results = service.run_retention().await;
-    
+
     // Verify all old events were deleted
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM contract_events")
         .fetch_one(&pool)
         .await
         .unwrap();
     assert_eq!(count, 0);
-    
+
     // Verify at least 4 batches were processed (5000 / 1000 = 5)
-    let event_result = results.iter().find(|r| r.table == "contract_events").unwrap();
+    let event_result = results
+        .iter()
+        .find(|r| r.table == "contract_events")
+        .unwrap();
     assert!(event_result.batches_processed >= 4);
 }
 
 #[tokio::test]
 async fn test_retention_preserves_aggregates() {
     let pool = migrated_pool().await;
-    
+
     // Insert old events
     insert_contract_events(&pool, 1000, 60).await;
-    
+
     // Insert recent events (should not be deleted)
-    let recent_cutoff = (Utc::now() - chrono::Duration::days(10)).format("%Y-%m-%d %H:%M:%S").to_string();
+    let recent_cutoff = (Utc::now() - chrono::Duration::days(10))
+        .format("%Y-%m-%d %H:%M:%S")
+        .to_string();
     for i in 0..100 {
         sqlx::query(
             r"
@@ -177,22 +186,22 @@ async fn test_retention_preserves_aggregates() {
         .await
         .unwrap();
     }
-    
+
     // Verify initial counts
     let old_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM contract_events WHERE created_at < datetime('now', '-30 days')"
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+        "SELECT COUNT(*) FROM contract_events WHERE created_at < datetime('now', '-30 days')",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(old_count, 1000);
-    
+
     let recent_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM contract_events WHERE created_at >= datetime('now', '-30 days')"
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+        "SELECT COUNT(*) FROM contract_events WHERE created_at >= datetime('now', '-30 days')",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(recent_count, 100);
 
     // Run retention
@@ -217,35 +226,37 @@ async fn test_retention_preserves_aggregates() {
     );
 
     let _results = service.run_retention().await;
-    
+
     // Verify old events were deleted
     let old_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM contract_events WHERE created_at < datetime('now', '-30 days')"
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+        "SELECT COUNT(*) FROM contract_events WHERE created_at < datetime('now', '-30 days')",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(old_count, 0);
-    
+
     // Verify recent events were preserved
     let recent_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM contract_events WHERE created_at >= datetime('now', '-30 days')"
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+        "SELECT COUNT(*) FROM contract_events WHERE created_at >= datetime('now', '-30 days')",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(recent_count, 100);
 }
 
 #[tokio::test]
 async fn test_corridor_metrics_retention() {
     let pool = migrated_pool().await;
-    
+
     // Insert old corridor metrics
     insert_corridor_metrics(&pool, 500, 400).await;
-    
+
     // Insert recent corridor metrics
-    let recent_cutoff = (Utc::now() - chrono::Duration::days(100)).format("%Y-%m-%d").to_string();
+    let recent_cutoff = (Utc::now() - chrono::Duration::days(100))
+        .format("%Y-%m-%d")
+        .to_string();
     for i in 0..100 {
         sqlx::query(
             r"
@@ -273,14 +284,14 @@ async fn test_corridor_metrics_retention() {
         .await
         .unwrap();
     }
-    
+
     // Verify initial counts
     let old_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM corridor_metrics WHERE date < date('now', '-365 days')"
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+        "SELECT COUNT(*) FROM corridor_metrics WHERE date < date('now', '-365 days')",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(old_count, 500);
 
     // Run retention
@@ -305,30 +316,30 @@ async fn test_corridor_metrics_retention() {
     );
 
     let results = service.run_retention().await;
-    
+
     // Verify old metrics were deleted
     let old_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM corridor_metrics WHERE date < date('now', '-365 days')"
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+        "SELECT COUNT(*) FROM corridor_metrics WHERE date < date('now', '-365 days')",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(old_count, 0);
-    
+
     // Verify recent metrics were preserved
     let recent_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM corridor_metrics WHERE date >= date('now', '-365 days')"
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+        "SELECT COUNT(*) FROM corridor_metrics WHERE date >= date('now', '-365 days')",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(recent_count, 100);
 }
 
 #[tokio::test]
 async fn test_vacuum_runs_successfully() {
     let pool = migrated_pool().await;
-    
+
     // Insert and delete data to create free pages
     for i in 0..1000 {
         sqlx::query(
@@ -343,7 +354,7 @@ async fn test_vacuum_runs_successfully() {
         .await
         .unwrap();
     }
-    
+
     // Delete the data to create free pages
     sqlx::query("DELETE FROM contract_events WHERE id LIKE 'temp-%'")
         .execute(&pool)
@@ -356,7 +367,7 @@ async fn test_vacuum_runs_successfully() {
         pages_per_batch: 50,
         max_pages: 500,
     };
-    
+
     // The vacuum should run without error
     // Note: This test just verifies vacuum doesn't panic
     // Actual page counting would require checking PRAGMA after vacuum
@@ -365,10 +376,10 @@ async fn test_vacuum_runs_successfully() {
 #[tokio::test]
 async fn test_no_blocking_during_retention() {
     let pool = migrated_pool().await;
-    
+
     // Insert data
     insert_contract_events(&pool, 5000, 60).await;
-    
+
     // Run retention with small batch size to allow concurrent reads
     let service = RetentionService::new(
         test_app_state(&pool),
@@ -392,9 +403,7 @@ async fn test_no_blocking_during_retention() {
 
     // Start retention in background
     let service_clone = service.clone();
-    let retention_handle = tokio::spawn(async move {
-        service_clone.run_retention().await
-    });
+    let retention_handle = tokio::spawn(async move { service_clone.run_retention().await });
 
     // Try to read from the table during retention
     // This should not block
@@ -405,14 +414,14 @@ async fn test_no_blocking_during_retention() {
             .unwrap();
         // Should get some count (could be all events or partial depending on timing)
         assert!(count >= 0);
-        
+
         // Sleep between reads to simulate concurrent API requests
         time::sleep(Duration::from_millis(50)).await;
     }
 
     // Wait for retention to complete
     let _results = retention_handle.await.unwrap();
-    
+
     // Verify all old events were eventually deleted
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM contract_events")
         .fetch_one(&pool)
@@ -424,10 +433,10 @@ async fn test_no_blocking_during_retention() {
 #[tokio::test]
 async fn test_batch_size_affects_performance() {
     let pool = migrated_pool().await;
-    
+
     // Insert 2000 events
     insert_contract_events(&pool, 2000, 60).await;
-    
+
     // Test with small batch size
     let service = RetentionService::new(
         test_app_state(&pool),
@@ -450,15 +459,18 @@ async fn test_batch_size_affects_performance() {
     );
 
     let results = service.run_retention().await;
-    
+
     // Verify all events were deleted
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM contract_events")
         .fetch_one(&pool)
         .await
         .unwrap();
     assert_eq!(count, 0);
-    
+
     // Verify we used multiple batches (2000 / 500 = 4)
-    let event_result = results.iter().find(|r| r.table == "contract_events").unwrap();
+    let event_result = results
+        .iter()
+        .find(|r| r.table == "contract_events")
+        .unwrap();
     assert!(event_result.batches_processed >= 4);
 }

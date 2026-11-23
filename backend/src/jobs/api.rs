@@ -76,10 +76,19 @@ pub fn routes(db: Database, persistence: Arc<JobPersistence>) -> axum::Router {
         .route("/admin/jobs/runs", axum::routing::get(list_runs))
         .route("/admin/jobs/runs/{id}", axum::routing::get(get_run))
         .route("/admin/jobs/config", axum::routing::get(list_configs))
-        .route("/admin/jobs/config/{job_name}", axum::routing::get(get_config))
-        .route("/admin/jobs/config/{job_name}", axum::routing::put(update_config))
+        .route(
+            "/admin/jobs/config/{job_name}",
+            axum::routing::get(get_config),
+        )
+        .route(
+            "/admin/jobs/config/{job_name}",
+            axum::routing::put(update_config),
+        )
         .route("/admin/jobs/schedule", axum::routing::post(schedule_run))
-        .route("/admin/jobs/runs/counts", axum::routing::get(get_run_counts))
+        .route(
+            "/admin/jobs/runs/counts",
+            axum::routing::get(get_run_counts),
+        )
         .with_state((Arc::new(db), persistence))
 }
 
@@ -149,7 +158,10 @@ async fn get_run(
     .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     run.map(JobRun::from)
-        .ok_or((axum::http::StatusCode::NOT_FOUND, "Run not found".to_string()))
+        .ok_or((
+            axum::http::StatusCode::NOT_FOUND,
+            "Run not found".to_string(),
+        ))
         .map(Json)
 }
 
@@ -157,11 +169,14 @@ async fn get_run(
 async fn list_configs(
     State((_db, persistence)): State<(Arc<Database>, Arc<JobPersistence>)>,
 ) -> Result<Json<Vec<JobConfigResponse>>, (axum::http::StatusCode, String)> {
-    let configs = persistence.get_all_configs().await.map_err(|e| {
-        (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-    })?;
+    let configs = persistence
+        .get_all_configs()
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    Ok(Json(configs.into_iter().map(JobConfigResponse::from).collect()))
+    Ok(Json(
+        configs.into_iter().map(JobConfigResponse::from).collect(),
+    ))
 }
 
 /// Get a specific job configuration
@@ -169,13 +184,17 @@ async fn get_config(
     State((_db, persistence)): State<(Arc<Database>, Arc<JobPersistence>)>,
     Path(job_name): Path<String>,
 ) -> Result<Json<JobConfigResponse>, (axum::http::StatusCode, String)> {
-    let config = persistence.get_config(&job_name).await.map_err(|e| {
-        (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-    })?;
+    let config = persistence
+        .get_config(&job_name)
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     config
         .map(JobConfigResponse::from)
-        .ok_or((axum::http::StatusCode::NOT_FOUND, "Job config not found".to_string()))
+        .ok_or((
+            axum::http::StatusCode::NOT_FOUND,
+            "Job config not found".to_string(),
+        ))
         .map(Json)
 }
 
@@ -185,11 +204,15 @@ async fn update_config(
     Path(job_name): Path<String>,
     Json(payload): Json<crate::jobs::config::UpdateJobConfigRequest>,
 ) -> Result<Json<JobConfigResponse>, (axum::http::StatusCode, String)> {
-    let config = persistence.get_config(&job_name).await.map_err(|e| {
-        (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-    })?;
+    let config = persistence
+        .get_config(&job_name)
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let mut config = config.ok_or((axum::http::StatusCode::NOT_FOUND, "Job config not found".to_string()))?;
+    let mut config = config.ok_or((
+        axum::http::StatusCode::NOT_FOUND,
+        "Job config not found".to_string(),
+    ))?;
 
     if let Some(enabled) = payload.enabled {
         config.enabled = enabled;
@@ -231,9 +254,10 @@ async fn schedule_run(
     // In production, this would be parameterized
     let job_name = "manual-run".to_string();
 
-    let run = persistence.get_or_create_run(&job_name, payload.scheduled_for).await.map_err(|e| {
-        (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-    })?;
+    let run = persistence
+        .get_or_create_run(&job_name, payload.scheduled_for)
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(ScheduleRunResponse {
         job_name,
@@ -246,15 +270,17 @@ async fn schedule_run(
 async fn get_run_counts(
     State((_db, persistence)): State<(Arc<Database>, Arc<JobPersistence>)>,
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
-    let job_names = persistence.get_all_configs().await.map_err(|e| {
-        (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-    })?;
+    let job_names = persistence
+        .get_all_configs()
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let mut counts = serde_json::Map::new();
     for config in job_names {
-        let run_counts = persistence.get_run_counts(&config.job_name).await.map_err(|e| {
-            (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-        })?;
+        let run_counts = persistence
+            .get_run_counts(&config.job_name)
+            .await
+            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
         counts.insert(
             config.job_name,

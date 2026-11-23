@@ -296,9 +296,7 @@ impl FieldSelectionError {
     #[must_use]
     pub fn to_api_error(&self) -> ApiError {
         match self {
-            Self::EmptyFieldList
-            | Self::TooManyFields { .. }
-            | Self::InvalidFieldName(_) => {
+            Self::EmptyFieldList | Self::TooManyFields { .. } | Self::InvalidFieldName(_) => {
                 ApiError::bad_request("INVALID_FIELD_SELECTION", self.to_string())
             }
             Self::ForbiddenField(_) | Self::AdminFieldRequired(_) => {

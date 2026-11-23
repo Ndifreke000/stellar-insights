@@ -424,11 +424,17 @@ issuer = "INVALID_PUBLIC_KEY"
     let report_bad = validate_sep1_content(invalid_issuer_toml);
     assert!(!report_bad.is_valid);
     assert!(report_bad.error_count > 0);
-    assert!(report_bad.diagnostics.iter().any(|d| d.field.contains("issuer") && d.severity == "error"));
+    assert!(report_bad
+        .diagnostics
+        .iter()
+        .any(|d| d.field.contains("issuer") && d.severity == "error"));
 
     // 3. Size limit exceeded
     let huge_toml = format!("# {}\nNETWORK_PASSPHRASE = \"Test\"", "A".repeat(105_000));
     let report_huge = validate_sep1_content(&huge_toml);
     assert!(!report_huge.is_valid);
-    assert!(report_huge.diagnostics.iter().any(|d| d.field == "FILE_SIZE"));
+    assert!(report_huge
+        .diagnostics
+        .iter()
+        .any(|d| d.field == "FILE_SIZE"));
 }

@@ -261,7 +261,11 @@ pub async fn approve_review(
         .await
         .map_err(|e| VerificationError::DatabaseError(e.to_string()))?;
 
-    Ok((StatusCode::OK, Json(serde_json::json!({"status": "approved"}))).into_response())
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({"status": "approved"})),
+    )
+        .into_response())
 }
 
 /// POST /api/verifications/review-queue/{id}/reject - Reject review item
@@ -285,7 +289,11 @@ pub async fn reject_review(
         .await
         .map_err(|e| VerificationError::DatabaseError(e.to_string()))?;
 
-    Ok((StatusCode::OK, Json(serde_json::json!({"status": "rejected"}))).into_response())
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({"status": "rejected"})),
+    )
+        .into_response())
 }
 
 /// GET /api/verifications/cluster/{user_id} - Get cluster information for sybil tracking

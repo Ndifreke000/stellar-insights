@@ -319,7 +319,10 @@ mod tests {
             .record_ledger_close(chrono::Utc::now())
             .await
             .unwrap();
-        endpoint.record_protocol_version(21, Some(22)).await.unwrap();
+        endpoint
+            .record_protocol_version(21, Some(22))
+            .await
+            .unwrap();
 
         let banner = endpoint.banner().await.unwrap().expect("upgrade banner");
         assert_eq!(banner.kind, BannerKind::ProtocolUpgrade);

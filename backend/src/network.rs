@@ -169,7 +169,9 @@ impl NetworkConfig {
         let protocol_version = record["protocol_version"]
             .as_u64()
             .map(|v| v as u32)
-            .ok_or_else(|| anyhow::anyhow!("Missing protocol_version in Horizon ledger response"))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!("Missing protocol_version in Horizon ledger response")
+            })?;
         let closed_at = record["closed_at"]
             .as_str()
             .and_then(parse_rfc3339)
@@ -217,8 +219,7 @@ pub enum NetworkHealth {
 
 /// Banner payload surfaced to the frontend describing the current network
 /// state. `severity` is one of `info`, `warning`, or `critical`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(utoipa::ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct NetworkBanner {
     pub health: NetworkHealth,
     pub severity: String,
@@ -408,10 +409,7 @@ mod tests {
         let mut tracker = NetworkStatusTracker::new(60);
 
         let first = snapshot(100, 20, now - Duration::from_secs(5));
-        assert_eq!(
-            tracker.evaluate(&first, now).health,
-            NetworkHealth::Healthy
-        );
+        assert_eq!(tracker.evaluate(&first, now).health, NetworkHealth::Healthy);
 
         let upgraded = snapshot(101, 21, now - Duration::from_secs(5));
         let banner = tracker.evaluate(&upgraded, now);

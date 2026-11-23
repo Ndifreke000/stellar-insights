@@ -427,7 +427,10 @@ fn generate_network_stats(
 
     Ok(NetworkStats {
         volume_24h: round2(observed.volume_24h),
-        volume_growth: round2(percent_change(observed.volume_24h, observed.previous_volume)),
+        volume_growth: round2(percent_change(
+            observed.volume_24h,
+            observed.previous_volume,
+        )),
         avg_success_rate,
         success_rate_growth: observed.success_rate_growth,
         active_corridors: observed.active_corridors,

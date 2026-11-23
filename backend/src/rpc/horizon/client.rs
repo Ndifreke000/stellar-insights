@@ -457,7 +457,11 @@ impl StellarRpcClient {
 
         let result = self
             .execute_with_retry(|| {
-                self.fetch_paths_strict_send_internal(source_asset, source_amount, destination_asset)
+                self.fetch_paths_strict_send_internal(
+                    source_asset,
+                    source_amount,
+                    destination_asset,
+                )
             })
             .await;
 

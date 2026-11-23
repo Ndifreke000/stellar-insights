@@ -240,9 +240,14 @@ impl Sep10Service {
             if let Some(sig) = request.signature.as_deref() {
                 // Try each known signer; the one whose key verifies is the signer.
                 for (signer_key, weight_val) in signers {
-                    if verify_account_signature(signer_key, request.transaction.as_bytes(), Some(sig)).is_ok() {
-                        accumulated_weight +=
-                            weight_val.as_u64().unwrap_or(1);
+                    if verify_account_signature(
+                        signer_key,
+                        request.transaction.as_bytes(),
+                        Some(sig),
+                    )
+                    .is_ok()
+                    {
+                        accumulated_weight += weight_val.as_u64().unwrap_or(1);
                         break;
                     }
                 }
@@ -251,9 +256,14 @@ impl Sep10Service {
             if let Some(extra) = request.extra_signatures.as_ref() {
                 for extra_sig in extra {
                     for (signer_key, weight_val) in signers {
-                        if verify_account_signature(signer_key, request.transaction.as_bytes(), Some(extra_sig)).is_ok() {
-                            accumulated_weight +=
-                                weight_val.as_u64().unwrap_or(1);
+                        if verify_account_signature(
+                            signer_key,
+                            request.transaction.as_bytes(),
+                            Some(extra_sig),
+                        )
+                        .is_ok()
+                        {
+                            accumulated_weight += weight_val.as_u64().unwrap_or(1);
                             break;
                         }
                     }
@@ -451,23 +461,20 @@ impl Sep10Service {
 /// unreachable, the file is malformed, or no SIGNING_KEY is present.
 async fn fetch_client_domain_signing_key(domain: &str) -> Result<String> {
     let url = format!("https://{}/.well-known/stellar.toml", domain);
-    let body = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        async {
-            let resp = reqwest::get(&url)
-                .await
-                .map_err(|e| anyhow!("Failed to fetch stellar.toml for {domain}: {e}"))?;
-            if !resp.status().is_success() {
-                return Err(anyhow!(
-                    "stellar.toml fetch returned {} for {domain}",
-                    resp.status()
-                ));
-            }
-            resp.text()
-                .await
-                .map_err(|e| anyhow!("Failed to read stellar.toml body for {domain}: {e}"))
-        },
-    )
+    let body = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        let resp = reqwest::get(&url)
+            .await
+            .map_err(|e| anyhow!("Failed to fetch stellar.toml for {domain}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(anyhow!(
+                "stellar.toml fetch returned {} for {domain}",
+                resp.status()
+            ));
+        }
+        resp.text()
+            .await
+            .map_err(|e| anyhow!("Failed to read stellar.toml body for {domain}: {e}"))
+    })
     .await
     .map_err(|_| anyhow!("Timeout fetching stellar.toml for {domain}"))??;
 
@@ -482,7 +489,9 @@ async fn fetch_client_domain_signing_key(domain: &str) -> Result<String> {
             }
         }
     }
-    Err(anyhow!("No valid SIGNING_KEY found in stellar.toml for {domain}"))
+    Err(anyhow!(
+        "No valid SIGNING_KEY found in stellar.toml for {domain}"
+    ))
 }
 
 /// Check that `signature` (base64) is the Ed25519 signature of `message` by

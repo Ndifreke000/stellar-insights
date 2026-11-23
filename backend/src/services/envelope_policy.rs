@@ -70,8 +70,7 @@ pub fn validate_submit_snapshot_envelope(
 
     // Exactly two args: snapshot hash (bytes) then epoch (u64).
     let mut vals = args.args.iter();
-    let (Some(hash_arg), Some(epoch_arg), None) = (vals.next(), vals.next(), vals.next())
-    else {
+    let (Some(hash_arg), Some(epoch_arg), None) = (vals.next(), vals.next(), vals.next()) else {
         bail!(
             "submit_snapshot expects exactly 2 arguments, got {}",
             args.args.len()
@@ -102,11 +101,11 @@ pub fn validate_submit_snapshot_envelope(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use stellar_xdr::curr::{
-        InvokeContractArgs, InvokeHostFunctionOp, Memo, MuxedAccount, Operation,
-        Preconditions, ScBytes, ScSymbol, SequenceNumber, TransactionExt, Uint256, VecM,
-    };
     use ed25519_dalek::SigningKey;
+    use stellar_xdr::curr::{
+        InvokeContractArgs, InvokeHostFunctionOp, Memo, MuxedAccount, Operation, Preconditions,
+        ScBytes, ScSymbol, SequenceNumber, TransactionExt, Uint256, VecM,
+    };
 
     // Real testnet contract ids from contracts/.env.testnet.
     const TEST_CONTRACT: &str = "CAPHQZ4BBT43HU5EUSJAOPKWB66HGLTN4AKJUALV3R2RXS4A6IOXWUTL";
@@ -117,11 +116,7 @@ mod tests {
         TEST_CONTRACT
     }
 
-    fn make_tx(
-        contract_id: &str,
-        function: &str,
-        args: Vec<ScVal>,
-    ) -> Transaction {
+    fn make_tx(contract_id: &str, function: &str, args: Vec<ScVal>) -> Transaction {
         let contract = stellar_strkey::Contract::from_string(contract_id)
             .unwrap_or_else(|e| panic!("bad test contract id {contract_id}: {e}"));
         let op = Operation {

@@ -405,7 +405,11 @@ impl JobPersistence {
     }
 
     /// Find missed runs based on catch-up policy and schedule them
-    pub async fn find_missed_runs(&self, job_name: &str, now: DateTime<Utc>) -> Result<Vec<DateTime<Utc>>> {
+    pub async fn find_missed_runs(
+        &self,
+        job_name: &str,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<DateTime<Utc>>> {
         let config: Option<JobRunConfig> = sqlx::query_as(
             r#"
             SELECT job_name, interval_seconds, enabled, catch_up_policy, last_scheduled_for
@@ -426,7 +430,9 @@ impl JobPersistence {
             return Ok(vec![]);
         }
 
-        let last_scheduled = config.last_scheduled_for.unwrap_or_else(|| now - Duration::days(365));
+        let last_scheduled = config
+            .last_scheduled_for
+            .unwrap_or_else(|| now - Duration::days(365));
         let policy = match config.policy.as_str() {
             "all" => CatchUpPolicy::All,
             _ => CatchUpPolicy::LatestOnly,
@@ -470,7 +476,11 @@ impl JobPersistence {
     }
 
     /// Update the last scheduled time for a job
-    pub async fn update_last_scheduled(&self, job_name: &str, scheduled_for: DateTime<Utc>) -> Result<()> {
+    pub async fn update_last_scheduled(
+        &self,
+        job_name: &str,
+        scheduled_for: DateTime<Utc>,
+    ) -> Result<()> {
         sqlx::query(
             r#"
             UPDATE job_run_configs
@@ -541,7 +551,7 @@ mod tests {
     #[test]
     fn job_run_lifecycle() {
         let mut run = JobRun::new_pending("test-job", Utc::now());
-        
+
         assert_eq!(run.status, "pending");
         assert!(run.started_at.is_none());
         assert!(run.completed_at.is_none());

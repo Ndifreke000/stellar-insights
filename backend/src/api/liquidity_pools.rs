@@ -12,9 +12,7 @@ use axum::{
 use serde::Deserialize;
 use std::sync::Arc;
 
-use crate::models::{
-    LiquidityPool, LiquidityPoolSnapshot, LiquidityPoolStats, LpReturnsAnalytics,
-};
+use crate::models::{LiquidityPool, LiquidityPoolSnapshot, LiquidityPoolStats, LpReturnsAnalytics};
 use crate::services::liquidity_pool_analyzer::LiquidityPoolAnalyzer;
 
 #[derive(Deserialize)]

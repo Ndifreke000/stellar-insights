@@ -228,7 +228,10 @@ impl DexVwapProvider {
     }
 
     pub async fn set_price(&self, asset_id: &str, price: f64) {
-        self.overrides.write().await.insert(asset_id.to_string(), price);
+        self.overrides
+            .write()
+            .await
+            .insert(asset_id.to_string(), price);
     }
 }
 
@@ -288,7 +291,10 @@ impl ReflectorOracleProvider {
     }
 
     pub async fn set_price(&self, asset_id: &str, price: f64) {
-        self.overrides.write().await.insert(asset_id.to_string(), price);
+        self.overrides
+            .write()
+            .await
+            .insert(asset_id.to_string(), price);
     }
 }
 
@@ -377,7 +383,11 @@ pub fn median_with_mad_outlier_rejection(
         median_price(&inlier_prices).unwrap_or(raw_med)
     };
 
-    let dispersion = if final_price > 0.0 { mad / final_price } else { 0.0 };
+    let dispersion = if final_price > 0.0 {
+        mad / final_price
+    } else {
+        0.0
+    };
     let sources_count = inlier_sources.len();
 
     let (confidence, confidence_level) = if sources_count >= min_sources && dispersion < 0.05 {
@@ -627,7 +637,10 @@ impl PriceFeedClient {
             );
             info!(
                 "Fetched multi-source price for {}: ${} (sources: {:?}, confidence: {})",
-                stellar_asset, aggregated.price, aggregated.contributing_sources, aggregated.confidence_level
+                stellar_asset,
+                aggregated.price,
+                aggregated.contributing_sources,
+                aggregated.confidence_level
             );
             return Ok(aggregated);
         }

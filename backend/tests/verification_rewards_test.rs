@@ -404,8 +404,12 @@ async fn test_sybil_cluster_cap_and_review_queue() -> Result<()> {
     create_test_user(&pool, user2).await?;
 
     // Link both users to the same funding account cluster
-    let c1 = service.set_account_funding_source(user1, funding_parent).await?;
-    let c2 = service.set_account_funding_source(user2, funding_parent).await?;
+    let c1 = service
+        .set_account_funding_source(user1, funding_parent)
+        .await?;
+    let c2 = service
+        .set_account_funding_source(user2, funding_parent)
+        .await?;
     assert_eq!(c1, c2);
 
     let cluster_info = service.get_cluster_info(user1).await?;
@@ -441,7 +445,9 @@ async fn test_sybil_cluster_cap_and_review_queue() -> Result<()> {
     assert!(queue[0].reason.contains("Cluster reward cap exceeded"));
 
     // Admin approves review
-    service.approve_review(&queue[0].id, "admin-reviewer").await?;
+    service
+        .approve_review(&queue[0].id, "admin-reviewer")
+        .await?;
     let remaining_pending = service.get_review_queue(Some("pending"), 10).await?;
     assert_eq!(remaining_pending.len(), 0);
 

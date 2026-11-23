@@ -272,7 +272,11 @@ impl DistributedLock {
         }
         let mut conn = self.connection().await.ok_or("Redis unavailable")?;
         let script = redis::Script::new(GET_FENCE_TOKEN_SCRIPT);
-        let current: i64 = script.key(role).invoke_async(&mut conn).await.map_err(|_| "Redis script failed")?;
+        let current: i64 = script
+            .key(role)
+            .invoke_async(&mut conn)
+            .await
+            .map_err(|_| "Redis script failed")?;
         Ok(current)
     }
 
@@ -286,7 +290,11 @@ impl DistributedLock {
         }
         let mut conn = self.connection().await.ok_or("Redis unavailable")?;
         let script = redis::Script::new(INCREMENT_FENCE_TOKEN_SCRIPT);
-        let new_val: i64 = script.key(role).invoke_async(&mut conn).await.map_err(|_| "Redis script failed")?;
+        let new_val: i64 = script
+            .key(role)
+            .invoke_async(&mut conn)
+            .await
+            .map_err(|_| "Redis script failed")?;
         Ok(new_val)
     }
 }

@@ -6,7 +6,7 @@ pub mod api;
 pub mod api_analytics_middleware;
 pub mod distributed_lock;
 
-pub use distributed_lock::{FencingToken, instance_id, DistributedLock, LockGuard};
+pub use distributed_lock::{instance_id, DistributedLock, FencingToken, LockGuard};
 pub mod monitor;
 pub mod multisig;
 

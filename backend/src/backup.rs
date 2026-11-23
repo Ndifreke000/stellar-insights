@@ -101,7 +101,7 @@ impl BackupManager {
         let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
         let temp_filename = format!("payraider_{}_temp.db", timestamp);
         let backup_filename = format!("payraider_{}.db", timestamp);
-        
+
         let temp_path = Path::new(&self.config.backup_dir).join(&temp_filename);
         let final_path = Path::new(&self.config.backup_dir).join(&backup_filename);
 
@@ -130,21 +130,25 @@ impl BackupManager {
         dest_pool.close().await;
 
         // Step 2: Compute checksum
-        let bytes = tokio::fs::read(&temp_path)
-            .await
-            .with_context(|| format!("Failed to read temporary backup '{}'", temp_path.display()))?;
+        let bytes = tokio::fs::read(&temp_path).await.with_context(|| {
+            format!("Failed to read temporary backup '{}'", temp_path.display())
+        })?;
         let digest = Sha256::digest(&bytes);
         let checksum = hex::encode(digest);
 
         // Step 3: Optionally encrypt the backup
         let final_bytes = if let Some(ref key_hex) = self.config.encryption_key {
-            let service = EncryptionService::new(key_hex)
-                .with_context(|| "Failed to initialize encryption service with BACKUP_ENCRYPTION_KEY")?;
+            let service = EncryptionService::new(key_hex).with_context(|| {
+                "Failed to initialize encryption service with BACKUP_ENCRYPTION_KEY"
+            })?;
             let encrypted = service
                 .encrypt(&hex::encode(&bytes))
                 .context("Failed to encrypt backup")?;
             // Encode encrypted data as bytes for storage
-            let encrypted_str = format!("{}:{}:{}", encrypted.key_version, encrypted.nonce, encrypted.ciphertext);
+            let encrypted_str = format!(
+                "{}:{}:{}",
+                encrypted.key_version, encrypted.nonce, encrypted.ciphertext
+            );
             hex::decode(encrypted_str).unwrap_or(bytes) // Fallback to unencrypted if decode fails
         } else {
             bytes
@@ -330,7 +334,12 @@ impl BackupManager {
             let temp_decrypted = backup_path.with_extension("decrypted_temp.db");
             tokio::fs::write(&temp_decrypted, decrypted)
                 .await
-                .with_context(|| format!("Failed to write decrypted temp backup '{}'", temp_decrypted.display()))?;
+                .with_context(|| {
+                    format!(
+                        "Failed to write decrypted temp backup '{}'",
+                        temp_decrypted.display()
+                    )
+                })?;
             Some(temp_decrypted)
         } else {
             None
@@ -538,7 +547,8 @@ impl BackupManager {
     pub fn spawn_restore_drill(self: Arc<Self>) -> JoinHandle<()> {
         tokio::spawn(async move {
             let lock = crate::distributed_lock::DistributedLock::shared().await;
-            let scratch_dir = PathBuf::from(std::env::temp_dir()).join("stellar_insights_restore_drill");
+            let scratch_dir =
+                PathBuf::from(std::env::temp_dir()).join("stellar_insights_restore_drill");
 
             // Clean up any leftover scratch files from previous runs
             let _ = tokio::fs::remove_dir_all(&scratch_dir).await;
@@ -549,7 +559,10 @@ impl BackupManager {
                 tokio::time::sleep(wait).await;
 
                 let Some(_guard) = lock
-                    .try_acquire("job-lock:restore-drill", std::time::Duration::from_secs(55 * 60))
+                    .try_acquire(
+                        "job-lock:restore-drill",
+                        std::time::Duration::from_secs(55 * 60),
+                    )
                     .await
                 else {
                     tracing::info!("Restore drill skipped — another instance is running it");
@@ -570,7 +583,12 @@ impl BackupManager {
     async fn run_restore_drill(&self, scratch_dir: &Path) -> Result<()> {
         tokio::fs::create_dir_all(scratch_dir)
             .await
-            .with_context(|| format!("Failed to create scratch directory '{}'", scratch_dir.display()))?;
+            .with_context(|| {
+                format!(
+                    "Failed to create scratch directory '{}'",
+                    scratch_dir.display()
+                )
+            })?;
 
         // Find the latest backup
         let backup_path = self.find_latest_backup().await?;
@@ -588,7 +606,12 @@ impl BackupManager {
 
         tokio::fs::write(&scratch_db, decrypted)
             .await
-            .with_context(|| format!("Failed to write scratch database '{}'", scratch_db.display()))?;
+            .with_context(|| {
+                format!(
+                    "Failed to write scratch database '{}'",
+                    scratch_db.display()
+                )
+            })?;
 
         // Run integrity check on scratch DB
         let url = format!("sqlite://{}?mode=ro", scratch_db.display());
@@ -641,14 +664,19 @@ impl BackupManager {
     async fn find_latest_backup(&self) -> Result<PathBuf> {
         let mut entries = tokio::fs::read_dir(&self.config.backup_dir)
             .await
-            .with_context(|| format!("Failed to read backup directory '{}'", self.config.backup_dir))?;
+            .with_context(|| {
+                format!(
+                    "Failed to read backup directory '{}'",
+                    self.config.backup_dir
+                )
+            })?;
 
         let mut latest_path: Option<PathBuf> = None;
         let mut latest_time = SystemTime::UNIX_EPOCH;
 
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
-            
+
             // Skip temp files and non-.db files
             let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             if filename.contains("temp") || !filename.ends_with(".db") {
@@ -672,7 +700,7 @@ impl BackupManager {
     /// Sends an alert for backup failure
     fn alert_backup_failure(error: &anyhow::Error) {
         let message = format!("Backup failed: {}", error);
-        
+
         // Try to send to alert system if available
         // This will be handled by the main app's alert system
         tracing::error!(error = %error, "ALERT: Backup failed");
@@ -681,7 +709,7 @@ impl BackupManager {
     /// Sends an alert for restore drill failure
     fn alert_restore_drill_failure(error: &anyhow::Error) {
         let message = format!("Restore drill failed: {}", error);
-        
+
         tracing::error!(error = %error, "ALERT: Restore drill failed");
     }
 }
@@ -872,7 +900,9 @@ mod tests {
         let backup_dir = dir.path().join("backups");
 
         // Create a valid SQLite database file
-        tokio::fs::write(&db_path, b"SQLite format 3\0").await.unwrap();
+        tokio::fs::write(&db_path, b"SQLite format 3\0")
+            .await
+            .unwrap();
 
         let config = BackupConfig {
             enabled: true,
@@ -881,7 +911,7 @@ mod tests {
             keep_days: 7,
             schedule_hour_utc: 2,
             encryption_key: Some(
-                "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string()
+                "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
             ),
         };
 
@@ -904,15 +934,27 @@ mod tests {
     #[tokio::test]
     async fn find_latest_backup() {
         let dir = tempfile::tempdir().unwrap();
-        tokio::fs::create_dir_all(dir.path().join("backups")).await.unwrap();
+        tokio::fs::create_dir_all(dir.path().join("backups"))
+            .await
+            .unwrap();
 
         // Create some fake backups
-        tokio::fs::write(dir.path().join("backups").join("payraider_20240101_010000.db"), b"db1")
-            .await
-            .unwrap();
-        tokio::fs::write(dir.path().join("backups").join("payraider_20240102_010000.db"), b"db2")
-            .await
-            .unwrap();
+        tokio::fs::write(
+            dir.path()
+                .join("backups")
+                .join("payraider_20240101_010000.db"),
+            b"db1",
+        )
+        .await
+        .unwrap();
+        tokio::fs::write(
+            dir.path()
+                .join("backups")
+                .join("payraider_20240102_010000.db"),
+            b"db2",
+        )
+        .await
+        .unwrap();
 
         let config = BackupConfig {
             enabled: true,

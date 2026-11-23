@@ -120,17 +120,12 @@ impl ExpensiveRateLimiter {
     pub async fn cleanup(&self) {
         let now = Instant::now();
         let mut windows = self.windows.write().await;
-        windows.retain(|_, entry| {
-            now.duration_since(entry.window_start) < Duration::from_secs(300)
-        });
+        windows
+            .retain(|_, entry| now.duration_since(entry.window_start) < Duration::from_secs(300));
     }
 
     /// Get current usage stats for an identifier on a given endpoint.
-    pub async fn get_usage(
-        &self,
-        endpoint_category: &str,
-        identifier: &str,
-    ) -> Option<(u32, u32)> {
+    pub async fn get_usage(&self, endpoint_category: &str, identifier: &str) -> Option<(u32, u32)> {
         let key = (endpoint_category.to_string(), identifier.to_string());
         let windows = self.windows.read().await;
         windows
@@ -177,9 +172,15 @@ pub fn extract_identifier(
 /// HTTP headers to include in a 429 Too Many Requests response.
 pub fn rate_limit_headers(config: &RateLimitConfig, remaining: u32) -> Vec<(String, String)> {
     vec![
-        ("X-RateLimit-Limit".to_string(), config.max_requests.to_string()),
+        (
+            "X-RateLimit-Limit".to_string(),
+            config.max_requests.to_string(),
+        ),
         ("X-RateLimit-Remaining".to_string(), remaining.to_string()),
-        ("Retry-After".to_string(), config.retry_after_seconds.to_string()),
+        (
+            "Retry-After".to_string(),
+            config.retry_after_seconds.to_string(),
+        ),
     ]
 }
 
@@ -230,13 +231,22 @@ mod tests {
         // Exhaust export limit
         let export_config = RateLimitConfig::export();
         for _ in 0..5 {
-            limiter.check("export", "user:3", &export_config).await.unwrap();
+            limiter
+                .check("export", "user:3", &export_config)
+                .await
+                .unwrap();
         }
-        assert!(limiter.check("export", "user:3", &export_config).await.is_err());
+        assert!(limiter
+            .check("export", "user:3", &export_config)
+            .await
+            .is_err());
 
         // Analytics should still work for same user
         let analytics_config = RateLimitConfig::analytics();
-        assert!(limiter.check("analytics", "user:3", &analytics_config).await.is_ok());
+        assert!(limiter
+            .check("analytics", "user:3", &analytics_config)
+            .await
+            .is_ok());
     }
 
     #[test]
@@ -261,7 +271,10 @@ mod tests {
 
     #[test]
     fn test_extract_identifier_priority() {
-        assert_eq!(extract_identifier(Some("u1"), Some("k1"), Some("ip1")), "user:u1");
+        assert_eq!(
+            extract_identifier(Some("u1"), Some("k1"), Some("ip1")),
+            "user:u1"
+        );
         assert_eq!(extract_identifier(None, Some("k1"), Some("ip1")), "key:k1");
         assert_eq!(extract_identifier(None, None, Some("ip1")), "ip:ip1");
         assert_eq!(extract_identifier(None, None, None), "anonymous");

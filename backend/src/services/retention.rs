@@ -112,7 +112,7 @@ impl RetentionService {
         }
 
         result.elapsed_ms = start_time.elapsed().as_millis() as i64;
-        
+
         info!(
             "Completed retention for {}: {} rows deleted in {} batches, {}ms",
             table, result.deleted_rows, result.batches_processed, result.elapsed_ms
@@ -181,7 +181,7 @@ impl RetentionService {
         }
 
         result.elapsed_ms = start_time.elapsed().as_millis() as i64;
-        
+
         info!(
             "Completed retention for {}: {} rows deleted in {} batches, {}ms",
             table, result.deleted_rows, result.batches_processed, result.elapsed_ms
@@ -326,7 +326,7 @@ mod tests {
     async fn test_retention_service_creation() {
         let app_state = mock_app_state().await;
         let service = RetentionService::new(app_state, None);
-        
+
         let config = service.get_config();
         assert_eq!(config.get_days("contract_events"), 30);
         assert_eq!(config.get_days("corridor_metrics"), 365);
@@ -336,7 +336,7 @@ mod tests {
     async fn test_vacuum_config() {
         let app_state = mock_app_state().await;
         let service = RetentionService::new(app_state, None);
-        
+
         let vacuum_config = service.get_vacuum_config();
         assert!(vacuum_config.enabled);
         assert_eq!(vacuum_config.pages_per_batch, 100);

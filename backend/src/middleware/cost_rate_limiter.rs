@@ -79,10 +79,7 @@ impl CostRateLimiter {
         // Create new client state with initial budget
         let budget = tier.budget(&self.config);
         let state = crate::models::cost::ClientCostState::new(budget, tier);
-        states.insert(
-            client_key.to_string(),
-            (state.clone(), now),
-        );
+        states.insert(client_key.to_string(), (state.clone(), now));
         state
     }
 
@@ -94,13 +91,9 @@ impl CostRateLimiter {
         tier: ClientTier,
         cost: f64,
     ) -> Result<bool, &'static str> {
-        let mut state = self
-            .get_or_create_client_state(client_key, tier)
-            .await;
+        let mut state = self.get_or_create_client_state(client_key, tier).await;
 
-        state
-            .try_debit(cost)
-            .map_err(|_| "Failed to debit cost")
+        state.try_debit(cost).map_err(|_| "Failed to debit cost")
     }
 
     /// Check if client has sufficient budget for the given cost.
@@ -110,9 +103,7 @@ impl CostRateLimiter {
         tier: ClientTier,
         cost: f64,
     ) -> bool {
-        let state = self
-            .get_or_create_client_state(client_key, tier)
-            .await;
+        let state = self.get_or_create_client_state(client_key, tier).await;
         state.has_sufficient_balance(cost)
     }
 
@@ -123,9 +114,7 @@ impl CostRateLimiter {
         tier: ClientTier,
         cost_estimate: f64,
     ) -> CostHeaders {
-        let state = self
-            .get_or_create_client_state(client_key, tier)
-            .await;
+        let state = self.get_or_create_client_state(client_key, tier).await;
         CostHeaders::from_state(&state, cost_estimate)
     }
 
@@ -161,10 +150,7 @@ pub fn extract_client_key(
 }
 
 /// Get client tier from request context.
-pub fn get_client_tier(
-    api_key: Option<&str>,
-    user_id: Option<&str>,
-) -> ClientTier {
+pub fn get_client_tier(api_key: Option<&str>, user_id: Option<&str>) -> ClientTier {
     if api_key.is_some() || user_id.is_some() {
         ClientTier::Authenticated
     } else {
@@ -179,7 +165,9 @@ mod tests {
     #[tokio::test]
     async fn test_debit_succeeds() {
         let limiter = CostRateLimiter::new();
-        let result = limiter.debit("test-client", ClientTier::Anonymous, 50.0).await;
+        let result = limiter
+            .debit("test-client", ClientTier::Anonymous, 50.0)
+            .await;
         assert!(result.is_ok());
         assert!(result.unwrap());
     }
@@ -188,7 +176,9 @@ mod tests {
     async fn test_debit_fails_insufficient() {
         let limiter = CostRateLimiter::new();
         // Try to debit more than the default anonymous budget (100)
-        let result = limiter.debit("test-client-2", ClientTier::Anonymous, 150.0).await;
+        let result = limiter
+            .debit("test-client-2", ClientTier::Anonymous, 150.0)
+            .await;
         assert!(result.is_ok());
         assert!(!result.unwrap());
     }
@@ -196,10 +186,13 @@ mod tests {
     #[tokio::test]
     async fn test_different_clients_have_separate_budgets() {
         let limiter = CostRateLimiter::new();
-        
+
         // Exhaust budget for client 1
-        limiter.debit("client-1", ClientTier::Anonymous, 100.0).await.unwrap();
-        
+        limiter
+            .debit("client-1", ClientTier::Anonymous, 100.0)
+            .await
+            .unwrap();
+
         // Client 2 should still have full budget
         let result = limiter.debit("client-2", ClientTier::Anonymous, 50.0).await;
         assert!(result.is_ok());
@@ -209,13 +202,13 @@ mod tests {
     #[tokio::test]
     async fn test_authenticated_clients_have_more_budget() {
         let limiter = CostRateLimiter::new();
-        
+
         // Anonymous client should have 100 budget
         let has_budget = limiter
             .has_sufficient_budget("anon", ClientTier::Anonymous, 150.0)
             .await;
         assert!(!has_budget);
-        
+
         // Authenticated client should have 1000 budget
         let has_budget = limiter
             .has_sufficient_budget("auth", ClientTier::Authenticated, 500.0)
@@ -237,10 +230,7 @@ mod tests {
             extract_client_key(None, None, Some("192.168.1.1")),
             "ip:192.168.1.1"
         );
-        assert_eq!(
-            extract_client_key(None, None, None),
-            "anonymous"
-        );
+        assert_eq!(extract_client_key(None, None, None), "anonymous");
     }
 
     #[test]
@@ -253,9 +243,6 @@ mod tests {
             get_client_tier(None, Some("user_id")),
             ClientTier::Authenticated
         );
-        assert_eq!(
-            get_client_tier(None, None),
-            ClientTier::Anonymous
-        );
+        assert_eq!(get_client_tier(None, None), ClientTier::Anonymous);
     }
 }

@@ -733,7 +733,8 @@ impl StellarTomlClient {
 
         // Check CORS header
         let cors_header = response.headers().get("access-control-allow-origin");
-        let has_wildcard_cors = cors_header.and_then(|v| v.to_str().ok()).map(|s| s.trim()) == Some("*");
+        let has_wildcard_cors =
+            cors_header.and_then(|v| v.to_str().ok()).map(|s| s.trim()) == Some("*");
         if !has_wildcard_cors {
             diagnostics.push(TomlDiagnostic {
                 field: "CORS".to_string(),
@@ -744,7 +745,11 @@ impl StellarTomlClient {
         }
 
         // Check Content-Type header
-        let content_type = response.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("");
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
         if !content_type.contains("text/plain") && !content_type.contains("application/toml") {
             diagnostics.push(TomlDiagnostic {
                 field: "CONTENT_TYPE".to_string(),
@@ -757,9 +762,21 @@ impl StellarTomlClient {
         let body = response.text().await.unwrap_or_default();
         let mut report = validate_sep1_content(&body);
         report.diagnostics.extend(diagnostics);
-        report.error_count = report.diagnostics.iter().filter(|d| d.severity == "error").count();
-        report.warning_count = report.diagnostics.iter().filter(|d| d.severity == "warning").count();
-        report.info_count = report.diagnostics.iter().filter(|d| d.severity == "info").count();
+        report.error_count = report
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == "error")
+            .count();
+        report.warning_count = report
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == "warning")
+            .count();
+        report.info_count = report
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == "info")
+            .count();
         report.is_valid = report.error_count == 0;
 
         Ok(report)
@@ -782,8 +799,13 @@ pub fn validate_sep1_content(content: &str) -> TomlValidationReport {
         diagnostics.push(TomlDiagnostic {
             field: "FILE_SIZE".to_string(),
             severity: "error".to_string(),
-            message: format!("File size ({} bytes) exceeds the 100KB limit recommended by SEP-1", size_bytes),
-            fix_hint: "Remove unused documentation or truncate large descriptions to stay under 100KB".to_string(),
+            message: format!(
+                "File size ({} bytes) exceeds the 100KB limit recommended by SEP-1",
+                size_bytes
+            ),
+            fix_hint:
+                "Remove unused documentation or truncate large descriptions to stay under 100KB"
+                    .to_string(),
         });
     }
 
@@ -796,7 +818,8 @@ pub fn validate_sep1_content(content: &str) -> TomlValidationReport {
                 field: "SYNTAX".to_string(),
                 severity: "error".to_string(),
                 message: format!("TOML syntax error: {e}"),
-                fix_hint: "Check for unclosed strings, missing quotes, or invalid table headers".to_string(),
+                fix_hint: "Check for unclosed strings, missing quotes, or invalid table headers"
+                    .to_string(),
             });
             let errors = diagnostics.iter().filter(|d| d.severity == "error").count();
             return TomlValidationReport {
@@ -843,7 +866,9 @@ pub fn validate_sep1_content(content: &str) -> TomlValidationReport {
                     field: "NETWORK_PASSPHRASE".to_string(),
                     severity: "warning".to_string(),
                     message: format!("Unrecognized network passphrase: '{s}'"),
-                    fix_hint: "For public network use: 'Public Global Stellar Network ; September 2015'".to_string(),
+                    fix_hint:
+                        "For public network use: 'Public Global Stellar Network ; September 2015'"
+                            .to_string(),
                 });
             }
         } else {
@@ -859,7 +884,8 @@ pub fn validate_sep1_content(content: &str) -> TomlValidationReport {
             field: "NETWORK_PASSPHRASE".to_string(),
             severity: "warning".to_string(),
             message: "Missing NETWORK_PASSPHRASE field in stellar.toml".to_string(),
-            fix_hint: "Add NETWORK_PASSPHRASE = \"Public Global Stellar Network ; September 2015\"".to_string(),
+            fix_hint: "Add NETWORK_PASSPHRASE = \"Public Global Stellar Network ; September 2015\""
+                .to_string(),
         });
     }
 
@@ -870,7 +896,9 @@ pub fn validate_sep1_content(content: &str) -> TomlValidationReport {
                 diagnostics.push(TomlDiagnostic {
                     field: "SIGNING_KEY".to_string(),
                     severity: "error".to_string(),
-                    message: format!("Invalid SIGNING_KEY: '{s}'. Must be 56 characters starting with 'G'"),
+                    message: format!(
+                        "Invalid SIGNING_KEY: '{s}'. Must be 56 characters starting with 'G'"
+                    ),
                     fix_hint: "Provide a valid ed25519 public key starting with 'G'".to_string(),
                 });
             }
@@ -948,8 +976,12 @@ pub fn validate_sep1_content(content: &str) -> TomlValidationReport {
                                 diagnostics.push(TomlDiagnostic {
                                     field: format!("CURRENCIES[{idx}].display_decimals"),
                                     severity: "warning".to_string(),
-                                    message: format!("display_decimals ({d}) is outside common range 0-7"),
-                                    fix_hint: "Stellar assets typically support up to 7 decimal places".to_string(),
+                                    message: format!(
+                                        "display_decimals ({d}) is outside common range 0-7"
+                                    ),
+                                    fix_hint:
+                                        "Stellar assets typically support up to 7 decimal places"
+                                            .to_string(),
                                 });
                             }
                         } else {
@@ -974,7 +1006,10 @@ pub fn validate_sep1_content(content: &str) -> TomlValidationReport {
     }
 
     let error_count = diagnostics.iter().filter(|d| d.severity == "error").count();
-    let warning_count = diagnostics.iter().filter(|d| d.severity == "warning").count();
+    let warning_count = diagnostics
+        .iter()
+        .filter(|d| d.severity == "warning")
+        .count();
     let info_count = diagnostics.iter().filter(|d| d.severity == "info").count();
 
     TomlValidationReport {

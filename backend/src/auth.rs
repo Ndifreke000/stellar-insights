@@ -593,7 +593,9 @@ impl AuthService {
     /// invalidated, forcing a full re-login (#2796).
     pub async fn refresh(&self, request: RefreshTokenRequest) -> Result<RefreshTokenResponse> {
         // Validate JWT signature and expiry.
-        let claims = self.validate_refresh_token(&request.refresh_token).await
+        let claims = self
+            .validate_refresh_token(&request.refresh_token)
+            .await
             .map_err(|e| {
                 // validate_refresh_token returns "Refresh token not found or invalid" when the
                 // token is not the current one stored in Redis — that is our reuse-detection
@@ -631,7 +633,8 @@ impl AuthService {
             self.generate_refresh_token(&user, claims.session_id.as_deref(), &new_refresh_jti)?;
 
         // Persist the new refresh token so the next rotation can verify it.
-        self.store_refresh_token(&new_refresh_token, &user.id).await?;
+        self.store_refresh_token(&new_refresh_token, &user.id)
+            .await?;
 
         Ok(RefreshTokenResponse {
             access_token,

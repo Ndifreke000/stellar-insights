@@ -59,8 +59,8 @@ impl MobileLogRecord {
 /// Hashes a device id with a deployment salt, returning a short hex digest.
 /// The raw identifier is never returned or logged.
 pub fn hash_device_id(device_id: &str) -> String {
-    let salt = std::env::var(DEVICE_ID_SALT_ENV)
-        .unwrap_or_else(|_| DEFAULT_DEVICE_ID_SALT.to_string());
+    let salt =
+        std::env::var(DEVICE_ID_SALT_ENV).unwrap_or_else(|_| DEFAULT_DEVICE_ID_SALT.to_string());
     let mut hasher = Sha256::new();
     hasher.update(salt.as_bytes());
     hasher.update(b":");
@@ -192,7 +192,9 @@ mod tests {
     #[test]
     fn sampling_skips_most_requests() {
         let mut sampler = LogSampler::new();
-        let logged = (0..SAMPLE_EVERY).filter(|_| sampler.should_log(None)).count();
+        let logged = (0..SAMPLE_EVERY)
+            .filter(|_| sampler.should_log(None))
+            .count();
         assert_eq!(logged, 1);
     }
 

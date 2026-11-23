@@ -37,9 +37,7 @@ impl UserKeyService {
     pub fn from_env(pool: SqlitePool) -> Self {
         let kek = std::panic::catch_unwind(CryptoService::from_env).ok();
         if kek.is_none() {
-            tracing::warn!(
-                "ENCRYPTION_KEY unavailable; per-user field encryption disabled"
-            );
+            tracing::warn!("ENCRYPTION_KEY unavailable; per-user field encryption disabled");
         }
         Self::new(pool, kek)
     }

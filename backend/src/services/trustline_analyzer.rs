@@ -410,7 +410,9 @@ impl TrustlineAnalyzer {
         let mut cohorts_retention: Vec<TrustlineCohortRetention> = Vec::new();
         let max_weeks = max_cohort_weeks.clamp(1, 52);
 
-        for (cohort_week, (week_start, accounts)) in cohort_groups.into_iter().rev().take(max_weeks as usize) {
+        for (cohort_week, (week_start, accounts)) in
+            cohort_groups.into_iter().rev().take(max_weeks as usize)
+        {
             let cohort_size = accounts.len() as i64;
             if cohort_size == 0 {
                 continue;

@@ -41,10 +41,14 @@ impl WebhookSignature {
 
     /// Generate HMAC-SHA256 signature for webhook payload using primary and secondary secrets (for rotation)
     #[must_use]
-    pub fn sign_with_rotation(payload: &str, primary_secret: &str, secondary_secret: Option<&str>) -> String {
+    pub fn sign_with_rotation(
+        payload: &str,
+        primary_secret: &str,
+        secondary_secret: Option<&str>,
+    ) -> String {
         // Sign with primary secret
         let primary_sig = Self::sign(payload, primary_secret);
-        
+
         // If secondary secret exists, use it for dual-signing during rotation
         if let Some(sec) = secondary_secret {
             let secondary_sig = Self::sign(payload, sec);
@@ -63,25 +67,35 @@ impl WebhookSignature {
 
     /// Verify webhook signature using primary and secondary secrets (for rotation overlap period)
     #[must_use]
-    pub fn verify_with_rotation(payload: &str, primary_secret: &str, secondary_secret: Option<&str>, signature: &str) -> bool {
+    pub fn verify_with_rotation(
+        payload: &str,
+        primary_secret: &str,
+        secondary_secret: Option<&str>,
+        signature: &str,
+    ) -> bool {
         // Try primary secret first
         if Self::verify(payload, primary_secret, signature) {
             return true;
         }
-        
+
         // Try secondary secret during rotation period
         if let Some(sec) = secondary_secret {
             if Self::verify(payload, sec, signature) {
                 return true;
             }
         }
-        
+
         false
     }
 
     /// Verify webhook signature with version prefix
     #[must_use]
-    pub fn verify_with_version(payload: &str, secret: &str, version: &str, signature: &str) -> bool {
+    pub fn verify_with_version(
+        payload: &str,
+        secret: &str,
+        version: &str,
+        signature: &str,
+    ) -> bool {
         let signed_payload = format!("{}.{}", version, payload);
         Self::verify(&signed_payload, secret, signature)
     }
@@ -219,8 +233,8 @@ pub struct Webhook {
     pub id: String,
     pub user_id: String,
     pub url: String,
-    pub event_types: String,        // comma-separated
-    pub filters: Option<String>,    // JSON
+    pub event_types: String,     // comma-separated
+    pub filters: Option<String>, // JSON
     pub secret: String,
     pub is_active: bool,
     pub created_at: String,
@@ -264,7 +278,7 @@ pub struct WebhookResponse {
 /// Webhook event envelope with versioning
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WebhookEventEnvelope {
-    pub id: String,           // Delivery ID for idempotency
+    pub id: String, // Delivery ID for idempotency
     pub event: String,
     pub timestamp: i64,
     pub event_version: String,
@@ -662,10 +676,14 @@ impl WebhookService {
     }
 
     /// Check if webhook should be auto-disabled based on consecutive failures
-    pub async fn check_and_disable_webhook(&self, webhook_id: &str, reason: &str) -> anyhow::Result<bool> {
+    pub async fn check_and_disable_webhook(
+        &self,
+        webhook_id: &str,
+        reason: &str,
+    ) -> anyhow::Result<bool> {
         // First, get current webhook state
         let webhook = self.get_webhook(webhook_id).await?;
-        
+
         if let Some(ref w) = webhook {
             let current_failures = w.consecutive_failures;
             let max_failures = w.max_consecutive_failures;
@@ -745,7 +763,9 @@ impl WebhookService {
                         // Generate new secondary secret
                         let new_secret = Uuid::new_v4().to_string();
                         let new_next_rotation = now
-                            .checked_add_days(chrono::Days::new(w.secret_rotation_period_days as u64))
+                            .checked_add_days(chrono::Days::new(
+                                w.secret_rotation_period_days as u64,
+                            ))
                             .unwrap_or(now)
                             .to_rfc3339();
 

@@ -316,7 +316,11 @@ mod tests {
             let resp = inst
                 .cached_response(&headers, &ctx, "res:enc", &payload)
                 .unwrap();
-            assert_eq!(resp.status(), StatusCode::NOT_MODIFIED, "encoding={encoding}");
+            assert_eq!(
+                resp.status(),
+                StatusCode::NOT_MODIFIED,
+                "encoding={encoding}"
+            );
             assert_eq!(
                 resp.headers().get(ETAG).unwrap().to_str().unwrap(),
                 etag,

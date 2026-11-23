@@ -281,7 +281,11 @@ impl SessionService {
             ip_changed,
             country_changed,
         };
-        Ok(if anomaly.is_anomalous() { Some(anomaly) } else { None })
+        Ok(if anomaly.is_anomalous() {
+            Some(anomaly)
+        } else {
+            None
+        })
     }
 
     /// Get active session (not expired, not revoked, not idle)
@@ -349,8 +353,7 @@ impl SessionService {
             }
 
             let ip_address = self.user_keys.decrypt_field(&user_id, &ip).await?;
-            let device_user_agent =
-                self.user_keys.decrypt_opt(&user_id, device).await?;
+            let device_user_agent = self.user_keys.decrypt_opt(&user_id, device).await?;
 
             return Ok(Some(Session {
                 id,
