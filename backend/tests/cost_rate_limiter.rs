@@ -11,7 +11,7 @@ use axum::{
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use stellar_insights_backend::{
+use payraider_backend::{
     middleware::cost_rate_limiter::{CostRateLimiter, extract_client_key, get_client_tier},
     models::cost::{CostConfig, CostHeaders},
     state::AppState,
@@ -21,22 +21,22 @@ use stellar_insights_backend::{
 fn mock_app_state() -> AppState {
     // For testing, we just need the cost_rate_limiter field
     AppState::new(
-        std::sync::Arc::new(stellar_insights_backend::database::Database::new(
+        std::sync::Arc::new(payraider_backend::database::Database::new(
             sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap(),
         )),
-        std::sync::Arc::new(stellar_insights_backend::cache::CacheManager::new_in_memory_for_tests(
-            stellar_insights_backend::cache::CacheConfig::default(),
+        std::sync::Arc::new(payraider_backend::cache::CacheManager::new_in_memory_for_tests(
+            payraider_backend::cache::CacheConfig::default(),
         )),
-        std::sync::Arc::new(stellar_insights_backend::websocket::WsState::new()),
-        std::sync::Arc::new(stellar_insights_backend::ingestion::DataIngestionService::new(
-            std::sync::Arc::new(stellar_insights_backend::rpc::StellarRpcClient::new(
+        std::sync::Arc::new(payraider_backend::websocket::WsState::new()),
+        std::sync::Arc::new(payraider_backend::ingestion::DataIngestionService::new(
+            std::sync::Arc::new(payraider_backend::rpc::StellarRpcClient::new(
                 "https://horizon.stellar.org",
             )),
-            std::sync::Arc::new(stellar_insights_backend::database::Database::new(
+            std::sync::Arc::new(payraider_backend::database::Database::new(
                 sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap(),
             )),
         )),
-        std::sync::Arc::new(stellar_insights_backend::rpc::StellarRpcClient::new(
+        std::sync::Arc::new(payraider_backend::rpc::StellarRpcClient::new(
             "https://horizon.stellar.org",
         )),
     )
@@ -45,7 +45,7 @@ fn mock_app_state() -> AppState {
 #[tokio::test]
 async fn test_cost_estimate_headers() {
     let config = CostConfig::default();
-    let state = stellar_insights_backend::models::cost::ClientCostState::new(100.0, stellar_insights_backend::models::cost::ClientTier::Authenticated);
+    let state = payraider_backend::models::cost::ClientCostState::new(100.0, payraider_backend::models::cost::ClientTier::Authenticated);
     
     let cost_headers = CostHeaders::from_state(&state, 40.0);
     
@@ -77,15 +77,15 @@ async fn test_client_budgets() {
     let config = CostConfig::default();
     
     assert_eq!(
-        stellar_insights_backend::models::cost::ClientTier::Anonymous.budget(&config),
+        payraider_backend::models::cost::ClientTier::Anonymous.budget(&config),
         100.0
     );
     assert_eq!(
-        stellar_insights_backend::models::cost::ClientTier::Authenticated.budget(&config),
+        payraider_backend::models::cost::ClientTier::Authenticated.budget(&config),
         1000.0
     );
     assert_eq!(
-        stellar_insights_backend::models::cost::ClientTier::Premium.budget(&config),
+        payraider_backend::models::cost::ClientTier::Premium.budget(&config),
         10000.0
     );
 }
@@ -96,14 +96,14 @@ async fn test_cost_rate_limiter_debit() {
     
     // Debit within budget
     let result = limiter
-        .debit("test-client", stellar_insights_backend::models::cost::ClientTier::Authenticated, 100.0)
+        .debit("test-client", payraider_backend::models::cost::ClientTier::Authenticated, 100.0)
         .await;
     assert!(result.is_ok());
     assert!(result.unwrap());
     
     // Debit beyond remaining budget
     let result = limiter
-        .debit("test-client", stellar_insights_backend::models::cost::ClientTier::Authenticated, 1000.0)
+        .debit("test-client", payraider_backend::models::cost::ClientTier::Authenticated, 1000.0)
         .await;
     assert!(result.is_ok());
     assert!(!result.unwrap());
@@ -130,15 +130,15 @@ async fn test_client_key_extraction() {
 async fn test_client_tier() {
     assert_eq!(
         get_client_tier(Some("api_key"), None),
-        stellar_insights_backend::models::cost::ClientTier::Authenticated
+        payraider_backend::models::cost::ClientTier::Authenticated
     );
     assert_eq!(
         get_client_tier(None, Some("user_id")),
-        stellar_insights_backend::models::cost::ClientTier::Authenticated
+        payraider_backend::models::cost::ClientTier::Authenticated
     );
     assert_eq!(
         get_client_tier(None, None),
-        stellar_insights_backend::models::cost::ClientTier::Anonymous
+        payraider_backend::models::cost::ClientTier::Anonymous
     );
 }
 
@@ -149,14 +149,14 @@ async fn test_budget_insufficient_error_response() {
     
     // Exhaust anonymous budget (100 units)
     let result = limiter
-        .debit("anonymous-client", stellar_insights_backend::models::cost::ClientTier::Anonymous, 100.0)
+        .debit("anonymous-client", payraider_backend::models::cost::ClientTier::Anonymous, 100.0)
         .await;
     assert!(result.is_ok());
     assert!(result.unwrap());
     
     // Try to debit more
     let result = limiter
-        .debit("anonymous-client", stellar_insights_backend::models::cost::ClientTier::Anonymous, 50.0)
+        .debit("anonymous-client", payraider_backend::models::cost::ClientTier::Anonymous, 50.0)
         .await;
     assert!(result.is_ok());
     assert!(!result.unwrap());
