@@ -39,7 +39,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize contract service (optional)
     let contract_service = if std::env::var("SNAPSHOT_CONTRACT_ID").is_ok() {
         info!("Contract service configured - will submit to blockchain");
-        Some(Arc::new(ContractService::from_env()?))
+        Some(Arc::new(ContractService::from_env().await?))
     } else {
         info!("Contract service not configured - will only generate hash");
         None
