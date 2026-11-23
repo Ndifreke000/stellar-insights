@@ -286,3 +286,42 @@ impl DataIngestionService {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::failures::fixtures::*;
+    use super::*;
+    use crate::ingestion::ledger::tally_ledger_transaction;
+
+    /// Whichever ingestion path sees a transaction, the corridor success
+    /// rate must come out identical because both go through `failures`.
+    #[test]
+    fn success_rate_identical_across_ingestion_paths() {
+        let txs = [
+            tx_result_xdr(vec![strict_send(None)], false),
+            tx_result_xdr(
+                vec![strict_send(Some(PathPaymentFailureCode::UnderDestmin))],
+                true,
+            ),
+            tx_result_xdr(
+                vec![strict_receive(Some(PathPaymentFailureCode::OverSendmax))],
+                true,
+            ),
+            tx_result_xdr(vec![strict_receive(None)], false),
+        ];
+
+        let mut via_mod = CorridorFailureBreakdown::new("USDC", "NGN");
+        for tx in &txs {
+            tally_path_payment_failures(tx, &mut via_mod).unwrap();
+        }
+
+        let mut via_ledger = CorridorFailureBreakdown::new("USDC", "NGN");
+        for tx in &txs {
+            tally_ledger_transaction(tx, &mut via_ledger);
+        }
+
+        assert_eq!(via_mod, via_ledger);
+        assert_eq!(via_mod.success_rate(), via_ledger.success_rate());
+        assert!((via_mod.success_rate() - 50.0).abs() < 1e-9);
+    }
+}
