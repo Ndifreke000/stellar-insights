@@ -43,7 +43,7 @@
     "tsup": "8.5.1",
     "tsx": "^4.19.0",
     "typescript": "5.9.3",
-    "vitest": "4.1.10"
+    "vitest": "4.1.12"
   },
   "engines": {
     "node": ">=20"
@@ -52,5 +52,8 @@
     "type": "git",
     "url": "git+https://github.com/Ndifreke000/stellar-insights.git",
     "directory": "sdk/mcp-server"
+  },
+  "overrides": {
+    "esbuild": "^0.28.2"
   }
 }
