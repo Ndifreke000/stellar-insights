@@ -2,16 +2,16 @@
 
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
-import { checkPathCompletion } from "@/lib/quests";
+import { reportActivity } from "@/lib/quests";
 
 /**
- * Tracks navigation and marks quests complete when user visits matching paths
+ * Tracks navigation and reports it to the backend, which decides quest completion
  */
 export function QuestProgressTracker() {
   const pathname = usePathname();
 
   useEffect(() => {
-    if (pathname) checkPathCompletion(pathname);
+    if (pathname) void reportActivity(pathname);
   }, [pathname]);
 
   return null;

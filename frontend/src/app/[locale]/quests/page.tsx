@@ -11,7 +11,7 @@ import {
   ACHIEVEMENTS,
   getProgress,
   getLeaderboard,
-  checkPathCompletion,
+  reportActivity,
 } from '@/lib/quests';
 import { isFeatureEnabled } from '@/lib/featureFlags';
 
@@ -22,7 +22,7 @@ export default function QuestsPage() {
 
   useEffect(() => {
     if (questsEnabled) {
-      checkPathCompletion(pathname);
+      void reportActivity(pathname);
     }
   }, [pathname, questsEnabled]);
 
