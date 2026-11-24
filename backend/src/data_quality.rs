@@ -36,7 +36,10 @@ impl DataExpectation for NotNullExpectation {
                 return ExpectationResult {
                     table_name: self.table_name.clone(),
                     expectation_name: self.name().to_string(),
-                    status: QualityStatus::Fail(format!("Null value found in field: {}", self.field)),
+                    status: QualityStatus::Fail(format!(
+                        "Null value found in field: {}",
+                        self.field
+                    )),
                 };
             }
         }
@@ -55,7 +58,9 @@ pub struct DataQualityService {
 
 impl DataQualityService {
     pub fn new() -> Self {
-        Self { expectations: vec![] }
+        Self {
+            expectations: vec![],
+        }
     }
 
     pub fn add_expectation(&mut self, exp: Box<dyn DataExpectation>) {
