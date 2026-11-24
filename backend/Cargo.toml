@@ -123,7 +123,7 @@ async-graphql-axum = { version = "7.0" }
 async-stream = "0.3"
 # Optional deps for the aws-kms transaction signer backend. Pinned to
 # releases at least a week old; enable with `--features aws-kms`.
-aws-sdk-kms = { version = "=1.129.0", optional = true, default-features = false, features = ["default-https-client", "rt-tokio"] }
+aws-sdk-kms = { version = "=1.133.0", optional = true, default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-config = { version = "=1.13.3", optional = true, features = ["behavior-version-latest"] }
 # Asset impersonation detection dependencies
 unicode-normalization = "0.1"
