@@ -52,5 +52,8 @@
     "type": "git",
     "url": "git+https://github.com/Ndifreke000/stellar-insights.git",
     "directory": "sdk/mcp-server"
+  },
+  "overrides": {
+    "esbuild": "^0.28.2"
   }
 }
