@@ -68,6 +68,11 @@ updates:
       - "dependencies"
       - "javascript"
       - "mobile"
+    ignore:
+      # React Native's babel preset (Babel 7) still resolves @babel/runtime/regenerator,
+      # which Babel 8 removed; the dev bundle fails to build on 8.x (see #2937).
+      - dependency-name: "@babel/runtime"
+        update-types: ["version-update:semver-major"]
 
   # SDK TypeScript npm dependencies
   - package-ecosystem: "npm"
