@@ -760,3 +760,8 @@ async fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+pub mod data_quality;
+
+#[cfg(test)]
+mod data_quality_test;
