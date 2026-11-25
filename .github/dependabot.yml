@@ -73,6 +73,12 @@ updates:
       # which Babel 8 removed; the dev bundle fails to build on 8.x (see #2937).
       - dependency-name: "@babel/runtime"
         update-types: ["version-update:semver-major"]
+      # @react-native/babel-preset's plugins assert Babel "^7.0.0-0"; loading
+      # them under @babel/core 8 makes every jest/metro transform fail.
+      - dependency-name: "@babel/core"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@babel/preset-env"
+        update-types: ["version-update:semver-major"]
 
   # SDK TypeScript npm dependencies
   - package-ecosystem: "npm"
