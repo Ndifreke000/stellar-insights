@@ -430,7 +430,8 @@ impl JobPersistence {
     ) -> Result<Vec<DateTime<Utc>>> {
         let config: Option<JobRunConfig> = sqlx::query_as(
             r#"
-            SELECT job_name, interval_seconds, enabled, catch_up_policy, last_scheduled_for
+            SELECT job_name, interval_seconds, enabled, catch_up_policy, last_scheduled_for,
+                   created_at, updated_at
             FROM job_run_configs
             WHERE job_name = ?
             "#,
