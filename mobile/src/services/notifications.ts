@@ -34,7 +34,7 @@ const NotificationPayloadSchema = z.object({
       body: z.string().optional(),
     })
     .optional(),
-  data: z.record(z.string()).optional(),
+  data: z.record(z.string(), z.string()).optional(),
 });
 
 type ValidatedPayload = z.infer<typeof NotificationPayloadSchema>;
