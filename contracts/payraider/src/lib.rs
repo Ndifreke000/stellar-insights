@@ -589,6 +589,12 @@ impl PayRaiderContract {
             return Err(Error::AlreadyInitialized);
         }
 
+        // `stellar contract deploy` and `initialize` are separate
+        // transactions, so without this anyone watching the network could
+        // initialise a freshly deployed contract first and make themselves
+        // admin. The admin must sign its own installation.
+        admin.require_auth();
+
         // Store the admin address
         env.storage().instance().set(&DataKey::Admin, &admin);
 

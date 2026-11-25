@@ -43,6 +43,7 @@ fn count_contract_events_with_topic0(env: &Env, topic0: Symbol) -> usize {
 #[test]
 fn test_initialization() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, PayRaiderContract);
     let client = PayRaiderContractClient::new(&env, &contract_id);
 
@@ -58,6 +59,7 @@ fn test_initialization() {
 #[should_panic(expected = "Error(Contract, #1)")]
 fn test_cannot_reinitialize() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, PayRaiderContract);
     let client = PayRaiderContractClient::new(&env, &contract_id);
 
@@ -345,6 +347,7 @@ fn test_event_emitted_on_each_valid_submission() {
 #[test]
 fn test_get_nonexistent_snapshot_fails() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, PayRaiderContract);
     let client = PayRaiderContractClient::new(&env, &contract_id);
 
@@ -359,6 +362,7 @@ fn test_get_nonexistent_snapshot_fails() {
 #[test]
 fn test_latest_snapshot_empty_fails() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, PayRaiderContract);
     let client = PayRaiderContractClient::new(&env, &contract_id);
 
@@ -629,6 +633,7 @@ fn test_error_messages_duplicate_epoch() {
 #[test]
 fn test_error_messages_snapshot_not_found() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register_contract(None, PayRaiderContract);
     let client = PayRaiderContractClient::new(&env, &contract_id);
 
@@ -1443,10 +1448,33 @@ fn bump_ttl_is_permissionless() {
     let env = Env::default();
     let contract_id = env.register_contract(None, PayRaiderContract);
     let client = PayRaiderContractClient::new(&env, &contract_id);
+    env.mock_all_auths();
     client.initialize(&Address::generate(&env));
 
-    // No auths mocked: bump_ttl must not call require_auth.
+    // Drop the mocked auths: bump_ttl must not call require_auth.
+    env.set_auths(&[]);
     client.bump_ttl();
+}
+
+#[test]
+fn test_initialize_requires_admin_auth() {
+    // deploy and initialize are separate transactions; nobody but the admin
+    // may install itself, or a watcher could front-run initialisation.
+    let env = Env::default();
+    let contract_id = env.register_contract(None, PayRaiderContract);
+    let client = PayRaiderContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    assert!(client.try_initialize(&admin).is_err());
+    assert!(client.try_get_admin().is_err());
+
+    env.mock_all_auths();
+    client.initialize(&admin);
+    assert_eq!(
+        env.auths()[0].0,
+        admin,
+        "initialize must be authorised by the admin being installed"
+    );
 }
 
 // ============================================================================
