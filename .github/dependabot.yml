@@ -79,6 +79,10 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "@babel/preset-env"
         update-types: ["version-update:semver-major"]
+      # @react-native/eslint-config peers on eslint ^8 || ^9; its bundled
+      # plugins (eslint-comments, @babel/eslint-parser) crash under eslint 10.
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
 
   # SDK TypeScript npm dependencies
   - package-ecosystem: "npm"

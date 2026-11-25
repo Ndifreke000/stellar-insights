@@ -7,7 +7,6 @@ import { apiClient } from '../api';
 import { useAuthStore } from '@store/authStore';
 import {
   AuthorizationStatus,
-  getMessaging,
   getToken,
   requestPermission,
   onTokenRefresh,
