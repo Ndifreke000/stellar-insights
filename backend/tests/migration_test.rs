@@ -92,3 +92,23 @@ async fn test_migrations_idempotent() {
     pool.close().await;
     std::fs::remove_file("test_migration_idempotent.db").ok();
 }
+
+/// sqlx keys `_sqlx_migrations` by version, so two forward migrations that
+/// share a numeric prefix make every fresh database fail with a UNIQUE
+/// constraint violation. Guard against that regression.
+#[test]
+fn test_migration_versions_are_unique() {
+    let migrator = sqlx::migrate!("./migrations");
+    let mut seen = std::collections::HashMap::new();
+    for m in migrator.iter() {
+        if m.migration_type.is_down_migration() {
+            continue;
+        }
+        if let Some(prev) = seen.insert(m.version, m.description.to_string()) {
+            panic!(
+                "duplicate migration version {}: '{}' and '{}'",
+                m.version, prev, m.description
+            );
+        }
+    }
+}
