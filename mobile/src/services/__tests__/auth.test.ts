@@ -14,9 +14,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────
 jest.mock('react-native-keychain');
-jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
-);
 jest.mock('@utils/logger', () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
