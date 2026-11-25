@@ -218,9 +218,21 @@ async fn update_config(
         config.enabled = enabled;
     }
     if let Some(interval) = payload.interval_seconds {
+        if interval <= 0 {
+            return Err((
+                axum::http::StatusCode::BAD_REQUEST,
+                "interval_seconds must be a positive number of seconds".to_string(),
+            ));
+        }
         config.interval_seconds = interval;
     }
     if let Some(policy) = payload.catch_up_policy {
+        if policy != "all" && policy != "latest_only" {
+            return Err((
+                axum::http::StatusCode::BAD_REQUEST,
+                "catch_up_policy must be 'all' or 'latest_only'".to_string(),
+            ));
+        }
         config.policy = policy;
     }
     config.updated_at = Utc::now();
