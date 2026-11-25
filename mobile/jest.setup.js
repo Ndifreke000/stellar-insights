@@ -18,9 +18,27 @@ jest.mock('react-native-reanimated', () => {
 // react-native 0.87 moved this from Libraries/Animated/ into src/private/animated/.
 jest.mock('react-native/src/private/animated/NativeAnimatedHelper');
 
-jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
-);
+// async-storage 3.x ships its in-memory mock at the `./jest` export (the 2.x
+// `jest/async-storage-mock` file is gone). Its methods are plain functions, so
+// wrap them in jest.fn() to keep `(AsyncStorage.getItem as jest.Mock)` usable.
+jest.mock('@react-native-async-storage/async-storage', () => {
+  const actual = jest.requireActual('@react-native-async-storage/async-storage/jest');
+  const storage = actual.default;
+  const mock = {};
+  for (const name of [
+    'getItem',
+    'setItem',
+    'removeItem',
+    'getMany',
+    'setMany',
+    'removeMany',
+    'getAllKeys',
+    'clear',
+  ]) {
+    mock[name] = jest.fn((...args) => storage[name](...args));
+  }
+  return { ...actual, __esModule: true, default: mock };
+});
 
 jest.mock('@react-native-community/netinfo', () => ({
   fetch: jest.fn(() =>
