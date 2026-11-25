@@ -39,35 +39,6 @@ const STORAGE_KEYS = {
   LEGACY_TOKEN_EXPIRY: 'stellar_sep10_token_expiry',
 }
 
-// The SEP-10 home domain is server-authoritative. We fetch it from the config
-// endpoint rather than trusting `window.location.hostname`, which breaks on
-// preview deployments and localhost and lets the client pick the domain.
-const CONFIG_ENDPOINT = '/api/v1/config'
-
-async function fetchHomeDomain(): Promise<string> {
-  const response = await fetch(CONFIG_ENDPOINT, {
-    method: 'GET',
-    headers: { Accept: 'application/json' },
-    credentials: 'same-origin',
-  })
-
-  if (!response.ok) {
-    throw new Error(`Failed to load config (status ${response.status})`)
-  }
-
-  const data: unknown = await response.json()
-  const homeDomain =
-    data && typeof data === 'object'
-      ? (data as { home_domain?: unknown }).home_domain
-      : undefined
-
-  if (typeof homeDomain !== 'string' || homeDomain.trim() === '') {
-    throw new Error('Config endpoint did not return a valid home_domain')
-  }
-
-  return homeDomain.trim()
-}
-
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [isConnected, setIsConnected] = useState(false)
   const [address, setAddress] = useState<string | null>(null)
@@ -170,14 +141,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      // Resolve the server-configured home domain. If the config endpoint is
-      // unavailable or returns no domain, fail closed rather than falling back
-      // to a client-controlled value.
-      const homeDomain = await fetchHomeDomain()
-
-      // Perform SEP-10 authentication and keep the bearer token in memory
-      // only, out of reach of anything that can read localStorage.
-      const { token } = await sep10AuthService.authenticate(address, { homeDomain })
+      // The home domain is server-authoritative: the challenge request omits
+      // it and the backend issues the challenge for its configured domain
+      // (it rejects any other). There is no /api/v1/config endpoint, so the
+      // previous lookup failed every sign-in before a challenge was requested.
+      //
+      // Keep the bearer token in memory only, out of reach of anything that
+      // can read localStorage.
+      const { token } = await sep10AuthService.authenticate(address)
 
       setAuthToken(token)
       setIsAuthenticated(true)
