@@ -1,4 +1,10 @@
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
+import axios, {
+  AxiosInstance,
+  AxiosRequestConfig,
+  AxiosResponse,
+  AxiosError,
+  InternalAxiosRequestConfig,
+} from 'axios';
 import { API_CONFIG } from '@config/constants';
 import { NETWORKS } from '@config/network';
 import { useAuthStore } from '@store/authStore';
@@ -23,15 +29,15 @@ class ApiClient {
   private setupInterceptors() {
     // Request interceptor
     this.client.interceptors.request.use(
-      (config: AxiosRequestConfig) => {
+      (config: InternalAxiosRequestConfig) => {
         const { tokens } = useAuthStore.getState();
         const { network } = useAppStore.getState();
 
         if (tokens?.accessToken) {
-          config.headers!.Authorization = `Bearer ${tokens.accessToken}`;
+          config.headers.set('Authorization', `Bearer ${tokens.accessToken}`);
         }
 
-        config.headers!['X-Stellar-Network'] = network;
+        config.headers.set('X-Stellar-Network', network);
 
         // Dynamically update base URL based on selected network
         config.baseURL = NETWORKS[network]?.apiBaseUrl || config.baseURL;
