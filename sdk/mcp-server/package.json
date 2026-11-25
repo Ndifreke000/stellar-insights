@@ -13,11 +13,14 @@
     "README.md"
   ],
   "scripts": {
+    "prebuild": "node ../scripts/ensure-local-sdk.mjs",
     "build": "tsup src/index.ts --format esm --dts --clean",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
+    "pretest": "node ../scripts/ensure-local-sdk.mjs",
     "test": "vitest run",
     "smoke-test": "node scripts/smoke-test.mjs",
+    "prelint": "node ../scripts/ensure-local-sdk.mjs",
     "lint": "tsc --noEmit && tsc -p tsconfig.test.json",
     "build:bundle": "tsup --config tsup.bundle.config.ts",
     "build:plugin": "npm run build:bundle && node scripts/sync-plugin.mjs"

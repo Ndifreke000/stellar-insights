@@ -26,8 +26,11 @@
   },
   "files": ["dist"],
   "scripts": {
+    "prebuild": "node ../scripts/ensure-local-sdk.mjs",
     "build": "tsup src/index.ts --format cjs,esm --dts --external react",
+    "pretest": "node ../scripts/ensure-local-sdk.mjs",
     "test": "vitest run",
+    "prelint": "node ../scripts/ensure-local-sdk.mjs",
     "lint": "tsc --noEmit"
   },
   "keywords": [
