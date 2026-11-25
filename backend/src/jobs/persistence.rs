@@ -129,14 +129,18 @@ impl JobPersistence {
     /// Initialize job run configs for all jobs if they don't exist
     pub async fn initialize_job_configs(&self) -> Result<()> {
         let jobs = vec![
-            ("corridor-refresh", 300, CatchUpPolicy::LatestOnly),
-            ("asset-revalidation", 86400, CatchUpPolicy::LatestOnly),
-            ("backup", 86400, CatchUpPolicy::LatestOnly),
-            ("backfill", 3600, CatchUpPolicy::All),
-            ("anchor-refresh", 600, CatchUpPolicy::LatestOnly),
+            ("corridor-refresh", 300, CatchUpPolicy::LatestOnly, true),
+            ("asset-revalidation", 86400, CatchUpPolicy::LatestOnly, true),
+            ("backup", 86400, CatchUpPolicy::LatestOnly, true),
+            ("backfill", 3600, CatchUpPolicy::All, true),
+            ("anchor-refresh", 600, CatchUpPolicy::LatestOnly, true),
+            // Target of manually scheduled runs (POST /jobs/runs). It has no
+            // periodic schedule, but job_runs.job_name references this table,
+            // so the row must exist for manual runs to be insertable.
+            ("manual-run", 0, CatchUpPolicy::LatestOnly, false),
         ];
 
-        for (job_name, interval_seconds, catch_up_policy) in jobs {
+        for (job_name, interval_seconds, catch_up_policy, enabled) in jobs {
             sqlx::query(
                 r#"
                 INSERT INTO job_run_configs (job_name, interval_seconds, enabled, catch_up_policy)
@@ -146,7 +150,7 @@ impl JobPersistence {
             )
             .bind(job_name)
             .bind(interval_seconds)
-            .bind(true)
+            .bind(enabled)
             .bind(catch_up_policy.as_str())
             .execute(&self.pool)
             .await
