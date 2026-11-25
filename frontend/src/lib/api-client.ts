@@ -74,12 +74,15 @@ async function apiFetch(url: string, options: ApiFetchOptions = {}): Promise<Res
 
   // Handle CSRF token errors — refresh and retry once
   if (response.status === 403 && !_retried) {
-    const data = await response.json().catch(() => ({}));
-    if (data.error?.includes('CSRF')) {
+    const data = await response.json().catch(() => undefined);
+    const message = (data as { error?: unknown } | undefined)?.error;
+    if (typeof message === 'string' && message.includes('CSRF')) {
       await refreshCsrfToken();
       return apiFetch(url, { ...options, _retried: true });
     }
-    throw new Error('Security validation failed. Please refresh the page and try again.');
+    // An ordinary permission error: surface it as the 403 it is (the body
+    // has already been read, so hand it over instead of the Response).
+    throw new ApiError(response.status, response.statusText, data);
   }
 
   return response;

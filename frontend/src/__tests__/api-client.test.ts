@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from '../lib/api-client';
+import { ApiError, apiGet, apiPost, apiPut, apiPatch, apiDelete } from '../lib/api-client';
 
 // Mock fetch
 global.fetch = vi.fn();
@@ -193,6 +193,24 @@ describe('API Client', () => {
           'X-CSRF-Token': 'new-csrf-token',
         }),
       });
+    });
+
+    it('should surface a non-CSRF 403 as an ApiError with its body', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        json: async () => ({ error: 'Insufficient permissions' }),
+      } as Response);
+
+      const error = await apiGet('/api/test').catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error).toMatchObject({
+        status: 403,
+        body: { error: 'Insufficient permissions' },
+      });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
     it('should handle general API errors', async () => {
