@@ -25,6 +25,24 @@ pub enum CatchUpPolicy {
     LatestOnly,
 }
 
+impl CatchUpPolicy {
+    /// Text representation stored in `job_run_configs.catch_up_policy`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CatchUpPolicy::All => "all",
+            CatchUpPolicy::LatestOnly => "latest_only",
+        }
+    }
+
+    /// Parse the stored text value; unknown values fall back to `LatestOnly`.
+    pub fn parse(value: &str) -> Self {
+        match value {
+            "all" => CatchUpPolicy::All,
+            _ => CatchUpPolicy::LatestOnly,
+        }
+    }
+}
+
 impl Default for CatchUpPolicy {
     fn default() -> Self {
         CatchUpPolicy::LatestOnly
@@ -129,7 +147,7 @@ impl JobPersistence {
             .bind(job_name)
             .bind(interval_seconds)
             .bind(true)
-            .bind(catch_up_policy as i32 + 1) // sqlite enum starts at 1
+            .bind(catch_up_policy.as_str())
             .execute(&self.pool)
             .await
             .with_context(|| format!("Failed to initialize job config for '{}'", job_name))?;
@@ -433,10 +451,7 @@ impl JobPersistence {
         let last_scheduled = config
             .last_scheduled_for
             .unwrap_or_else(|| now - Duration::days(365));
-        let policy = match config.policy.as_str() {
-            "all" => CatchUpPolicy::All,
-            _ => CatchUpPolicy::LatestOnly,
-        };
+        let policy = CatchUpPolicy::parse(&config.policy);
 
         // Calculate how many runs were missed
         let duration_since_last = now - last_scheduled;
