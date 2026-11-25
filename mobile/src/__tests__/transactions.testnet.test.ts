@@ -36,6 +36,7 @@ interface HorizonPage<T> {
 
 interface HorizonTransaction {
   id: string;
+  paging_token: string;
   hash: string;
   ledger: number;
   created_at: string;
@@ -146,7 +147,9 @@ describe('Testnet: Pagination', () => {
         return; // Not enough transactions to paginate
       }
 
-      const cursor = records1[records1.length - 1].id;
+      // A transaction's `id` is its hash; Horizon only accepts the numeric
+      // paging_token as a cursor (a hash is rejected with 400).
+      const cursor = records1[records1.length - 1].paging_token;
       const page2 = await horizonGet<HorizonPage<HorizonTransaction>>(
         `/transactions?order=desc&limit=3&cursor=${cursor}&include_failed=false`,
       );
