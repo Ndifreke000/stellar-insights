@@ -4,6 +4,7 @@ import { ChevronDown, AlertTriangle, Wifi, WifiOff } from 'lucide-react';
 import { logger } from '@/lib/logger';
 import { useNetwork } from '@/contexts/NetworkContext';
 import type { NetworkInfo } from '@/lib/api/types';
+import { config } from '@/config';
 
 export type { NetworkInfo };
 
@@ -37,7 +38,7 @@ export function NetworkSwitcher({ className = '', onNetworkChange }: NetworkSwit
         setLoading(true);
         
         // Fetch current network
-        const currentResponse = await fetch('/api/network/info');
+        const currentResponse = await fetch(`${config.apiUrl}/api/network/info`);
         if (currentResponse.ok) {
           const current = await currentResponse.json();
           setCurrentNetwork(current);
@@ -45,7 +46,7 @@ export function NetworkSwitcher({ className = '', onNetworkChange }: NetworkSwit
         }
 
         // Fetch available networks
-        const availableResponse = await fetch('/api/network/available');
+        const availableResponse = await fetch(`${config.apiUrl}/api/network/available`);
         if (availableResponse.ok) {
           const available = await availableResponse.json();
           setAvailableNetworks(available);
@@ -76,7 +77,7 @@ export function NetworkSwitcher({ className = '', onNetworkChange }: NetworkSwit
     if (!pendingNetwork) return;
 
     try {
-      const response = await fetch('/api/network/switch', {
+      const response = await fetch(`${config.apiUrl}/api/network/switch`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -9,6 +9,7 @@ import React, {
 } from 'react';
 import type { NetworkInfo } from '@/lib/api/types';
 import { logger } from '@/lib/logger';
+import { config } from '@/config';
 
 interface NetworkContextType {
   network: NetworkInfo | null;
@@ -46,7 +47,7 @@ export function NetworkProvider({ children }: NetworkProviderProps) {
   const refreshNetwork = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/network/info');
+      const response = await fetch(`${config.apiUrl}/api/network/info`);
       if (response.ok) {
         const current = (await response.json()) as NetworkInfo;
         setNetworkState(current);
