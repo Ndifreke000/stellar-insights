@@ -28,6 +28,15 @@ pub struct PaginationQuery {
     pub sort_order: Option<String>,
 }
 
+fn bad_request(message: &str) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::BAD_REQUEST,
+        Json(ErrorResponse {
+            error: message.to_string(),
+        }),
+    )
+}
+
 const fn default_limit() -> u32 {
     20
 }
@@ -232,10 +241,13 @@ pub async fn get_account_payments(
     Path(account_id): Path<String>,
     Query(params): Query<PaginationQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
-    match client
-        .fetch_account_payments(&account_id, params.limit)
-        .await
-    {
+    // account_id is interpolated into the upstream Horizon URL path, so it
+    // must be a well-formed account address (no '/', '?', '..' etc.).
+    if crate::validation::validate_stellar_address(&account_id).is_err() {
+        return Err(bad_request("The account id is not a valid Stellar address"));
+    }
+    let limit = params.limit.clamp(1, MAX_HORIZON_LIMIT);
+    match client.fetch_account_payments(&account_id, limit).await {
         Ok(payments) => Ok(Json(payments)),
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -265,8 +277,15 @@ pub async fn get_trades(
     State(client): State<Arc<StellarRpcClient>>,
     Query(params): Query<PaginationQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
-    let cursor = params.cursor.as_deref();
-    match client.fetch_trades(params.limit, cursor).await {
+    // Same guards as get_payments: Horizon rejects limit > 200 (which we
+    // would surface as a 500), and a non-numeric cursor could smuggle extra
+    // query parameters into the upstream URL.
+    let limit = params.limit.clamp(1, MAX_HORIZON_LIMIT);
+    let cursor = params.cursor.as_deref().filter(|c| !c.is_empty());
+    if cursor.is_some_and(|c| !c.bytes().all(|b| b.is_ascii_digit() || b == b'-')) {
+        return Err(bad_request("The pagination cursor is invalid"));
+    }
+    match client.fetch_trades(limit, cursor).await {
         Ok(trades) => Ok(Json(trades)),
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -314,7 +333,11 @@ pub async fn get_order_book(
     };
 
     match client
-        .fetch_order_book(&selling_asset, &buying_asset, params.limit)
+        .fetch_order_book(
+            &selling_asset,
+            &buying_asset,
+            params.limit.clamp(1, MAX_HORIZON_LIMIT),
+        )
         .await
     {
         Ok(order_book) => Ok(Json(order_book)),
