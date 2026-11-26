@@ -219,7 +219,16 @@ async fn get_proposal(
     let (proposal, cache_age) = service
         .get_proposal_cached(&id)
         .await
-        .map_err(|e| GovernanceError::NotFound(e.to_string()))?;
+        .map_err(|e| {
+            // Only a missing row is a 404; a broken database must surface as
+            // a 500 rather than masquerading as "Proposal not found".
+            if matches!(e.downcast_ref::<sqlx::Error>(), Some(sqlx::Error::RowNotFound)) {
+                GovernanceError::NotFound("Proposal not found".to_string())
+            } else {
+                tracing::error!(error = %e, proposal_id = %id, "Failed to load proposal");
+                GovernanceError::DatabaseError("Failed to load proposal".to_string())
+            }
+        })?;
 
     let mut response = (StatusCode::OK, Json(proposal)).into_response();
     let age_str = cache_age.unwrap_or(0).to_string();
