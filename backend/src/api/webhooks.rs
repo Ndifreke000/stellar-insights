@@ -300,13 +300,18 @@ pub async fn get_delivery_logs(
         return Err(WebhookApiError::Forbidden);
     }
 
+    // Clamp the page size: an unbounded client-supplied limit would let a
+    // single request pull every delivery log row into memory, and limit=0
+    // would report has_more=true forever.
+    let limit = query.limit.clamp(1, MAX_DELIVERY_LOGS_LIMIT) as usize;
+
     // Get delivery logs
     let logs = service
-        .get_delivery_logs(&webhook_id, query.limit as usize, query.offset as usize)
+        .get_delivery_logs(&webhook_id, limit, query.offset as usize)
         .await
         .map_err(|e| WebhookApiError::ServerError(e.to_string()))?;
 
-    let has_more = logs.len() >= query.limit as usize;
+    let has_more = logs.len() >= limit;
     let response: Vec<DeliveryLogResponse> = logs
         .into_iter()
         .map(|l| DeliveryLogResponse {
@@ -347,6 +352,9 @@ pub struct DeliveryLogsQuery {
 fn default_limit() -> u32 {
     50
 }
+
+/// Largest page of delivery logs a single request may fetch.
+const MAX_DELIVERY_LOGS_LIMIT: u32 = 200;
 
 fn default_offset() -> u32 {
     0
