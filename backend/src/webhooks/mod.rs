@@ -39,23 +39,22 @@ impl WebhookSignature {
         Self::sign(&signed_payload, secret)
     }
 
-    /// Generate HMAC-SHA256 signature for webhook payload using primary and secondary secrets (for rotation)
+    /// Signature header for a delivery while secret rotation may be active.
+    ///
+    /// Always the standard `sha256=<hex>` signature over the primary secret.
+    /// This previously switched to `primary=sha256=<hex>` as soon as a
+    /// secondary secret existed (and computed, then discarded, the
+    /// secondary signature), so every receiver's verification -- which
+    /// compares against `sha256=<hex>` -- started failing the moment
+    /// rotation kicked in. The secondary secret is never disclosed to the
+    /// webhook owner, so no receiver could verify against it anyway.
     #[must_use]
     pub fn sign_with_rotation(
         payload: &str,
         primary_secret: &str,
-        secondary_secret: Option<&str>,
+        _secondary_secret: Option<&str>,
     ) -> String {
-        // Sign with primary secret
-        let primary_sig = Self::sign(payload, primary_secret);
-
-        // If secondary secret exists, use it for dual-signing during rotation
-        if let Some(sec) = secondary_secret {
-            let secondary_sig = Self::sign(payload, sec);
-            format!("primary={}", primary_sig)
-        } else {
-            primary_sig
-        }
+        Self::sign(payload, primary_secret)
     }
 
     /// Verify webhook signature using primary secret
@@ -796,5 +795,19 @@ impl WebhookService {
         } else {
             Ok(false)
         }
+    }
+}
+
+#[cfg(test)]
+mod signature_tests {
+    use super::WebhookSignature;
+
+    #[test]
+    fn rotation_signature_stays_verifiable_with_primary_secret() {
+        let body = r#"{"event":"test"}"#;
+        let sig = WebhookSignature::sign_with_rotation(body, "primary", Some("secondary"));
+        assert!(sig.starts_with("sha256="));
+        assert!(WebhookSignature::verify(body, "primary", &sig));
+        assert!(!WebhookSignature::verify(body, "other", &sig));
     }
 }
