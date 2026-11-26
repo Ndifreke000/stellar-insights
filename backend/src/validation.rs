@@ -492,3 +492,83 @@ mod tests {
         assert!(validate_payload_size(10001, 10000).is_err());
     }
 }
+
+/// True if `transfer_server` is covered by one of the `allowed` origins
+/// (`SEP24_ALLOWED_ORIGINS` / `SEP31_ALLOWED_ORIGINS` entries).
+///
+/// Matching is done on the parsed URL: scheme, host and port must be equal,
+/// and an allowed entry with a path only covers that path and its children.
+/// A plain string-prefix check would let `https://anchor.com` approve
+/// `https://anchor.com.evil.net` or `https://anchor.com@evil.net`, and the
+/// proxies forward the caller's SEP-10 JWT to whatever host they hit.
+#[must_use]
+pub fn transfer_server_allowed(transfer_server: &str, allowed: &[String]) -> bool {
+    let Ok(target) = reqwest::Url::parse(transfer_server.trim()) else {
+        return false;
+    };
+    if !matches!(target.scheme(), "http" | "https")
+        || !target.username().is_empty()
+        || target.password().is_some()
+        || target.host_str().is_none()
+    {
+        return false;
+    }
+    let target_path = target.path().trim_end_matches('/');
+
+    allowed.iter().map(|o| o.trim()).any(|origin| {
+        if origin == "*" {
+            return true;
+        }
+        let Ok(allowed_url) = reqwest::Url::parse(origin) else {
+            return false;
+        };
+        if allowed_url.scheme() != target.scheme()
+            || allowed_url.host_str() != target.host_str()
+            || allowed_url.port_or_known_default() != target.port_or_known_default()
+        {
+            return false;
+        }
+        let allowed_path = allowed_url.path().trim_end_matches('/');
+        allowed_path.is_empty()
+            || target_path == allowed_path
+            || target_path
+                .strip_prefix(allowed_path)
+                .is_some_and(|rest| rest.starts_with('/'))
+    })
+}
+
+#[cfg(test)]
+mod transfer_server_allowlist_tests {
+    use super::transfer_server_allowed;
+
+    fn allow(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    #[test]
+    fn exact_and_child_paths_are_allowed() {
+        let list = allow(&["https://anchor.example.com", "https://x.io/sep24"]);
+        assert!(transfer_server_allowed("https://anchor.example.com", &list));
+        assert!(transfer_server_allowed("https://anchor.example.com/sep24/", &list));
+        assert!(transfer_server_allowed("https://x.io/sep24", &list));
+        assert!(transfer_server_allowed("https://x.io/sep24/v2", &list));
+    }
+
+    #[test]
+    fn prefix_lookalikes_are_rejected() {
+        let list = allow(&["https://anchor.example.com", "https://x.io/sep24"]);
+        assert!(!transfer_server_allowed("https://anchor.example.com.evil.net", &list));
+        assert!(!transfer_server_allowed("https://anchor.example.com@evil.net", &list));
+        assert!(!transfer_server_allowed("https://anchor.example.com:8443", &list));
+        assert!(!transfer_server_allowed("http://anchor.example.com", &list));
+        assert!(!transfer_server_allowed("https://x.io/sep24evil", &list));
+        assert!(!transfer_server_allowed("not a url", &list));
+    }
+
+    #[test]
+    fn wildcard_allows_any_http_url() {
+        let list = allow(&["*"]);
+        assert!(transfer_server_allowed("https://whatever.example", &list));
+        assert!(!transfer_server_allowed("file:///etc/passwd", &list));
+    }
+}

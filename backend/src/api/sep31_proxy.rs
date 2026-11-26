@@ -37,8 +37,7 @@ fn is_origin_allowed(transfer_server: &str) -> bool {
     if allowed.is_empty() {
         return true;
     }
-    let url = transfer_server.trim().trim_end_matches('/');
-    allowed.iter().any(|o| url.starts_with(o) || o == "*")
+    crate::validation::transfer_server_allowed(transfer_server, &allowed)
 }
 
 /// Extract the host (domain) of an anchor URL, if it is a valid http(s) URL.

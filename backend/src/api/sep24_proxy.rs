@@ -41,11 +41,7 @@ fn is_origin_allowed(transfer_server: &str) -> bool {
     if allowed.is_empty() {
         return true;
     }
-    let url = match transfer_server.strip_suffix('/') {
-        Some(u) => u,
-        None => transfer_server,
-    };
-    allowed.iter().any(|o| url.starts_with(o) || o == "*")
+    crate::validation::transfer_server_allowed(transfer_server, &allowed)
 }
 
 /// Extract the host (authority) portion of an `http(s)` URL, lowercased.
