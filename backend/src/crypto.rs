@@ -93,6 +93,18 @@ pub fn decrypt_data(encrypted_data: &str, key_hex: &str) -> Result<String> {
     String::from_utf8(plain_text_bytes).map_err(|e| anyhow!("Invalid UTF-8 in decrypted data: {e}"))
 }
 
+/// Compares two byte strings in time that depends only on their lengths,
+/// not on where they first differ. Use this for secrets, MACs and tokens so
+/// an attacker cannot recover them byte-by-byte through response timing.
+#[must_use]
+pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let diff = a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y));
+    std::hint::black_box(diff) == 0
+}
+
 /// Helper function to check if a string appears to be encrypted
 #[must_use]
 pub fn is_encrypted(data: &str) -> bool {
@@ -170,6 +182,14 @@ impl CryptoService {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn constant_time_eq_matches_equality() {
+        assert!(constant_time_eq(b"sha256=abc", b"sha256=abc"));
+        assert!(!constant_time_eq(b"sha256=abc", b"sha256=abd"));
+        assert!(!constant_time_eq(b"sha256=abc", b"sha256=ab"));
+        assert!(constant_time_eq(b"", b""));
+    }
 
     fn generate_test_key() -> String {
         let mut key = [0u8; 32];

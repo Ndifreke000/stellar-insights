@@ -154,7 +154,7 @@ impl OAuthService {
                 let decrypted_secret =
                     crate::crypto::decrypt_data(&client_secret_record, &self.encryption_key)
                         .map_err(|_| anyhow!("Invalid client credentials"))?;
-                if decrypted_secret == client_secret {
+                if crate::crypto::constant_time_eq(decrypted_secret.as_bytes(), client_secret.as_bytes()) {
                     Ok(user_id)
                 } else {
                     Err(anyhow!("Invalid client credentials"))

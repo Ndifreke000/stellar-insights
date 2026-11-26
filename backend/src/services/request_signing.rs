@@ -137,7 +137,8 @@ impl RequestSigningService {
         let expected_signature = Self::compute_signature(&canonical, signing_secret);
 
         // Constant-time comparison to avoid timing-oracle attacks.
-        let valid = signature == expected_signature;
+        let valid =
+            crate::crypto::constant_time_eq(signature.as_bytes(), expected_signature.as_bytes());
 
         if valid {
             // Record the nonce with a TTL equal to the full clock-skew window

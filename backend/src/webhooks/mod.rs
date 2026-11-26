@@ -62,7 +62,7 @@ impl WebhookSignature {
     #[must_use]
     pub fn verify(payload: &str, secret: &str, signature: &str) -> bool {
         let expected = Self::sign(payload, secret);
-        signature == expected
+        crate::crypto::constant_time_eq(signature.as_bytes(), expected.as_bytes())
     }
 
     /// Verify webhook signature using primary and secondary secrets (for rotation overlap period)

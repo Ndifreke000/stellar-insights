@@ -1023,7 +1023,7 @@ pub async fn ws_handler(
 
 fn validate_token(token: &str) -> bool {
     if let Ok(expected) = std::env::var("WS_AUTH_TOKEN") {
-        token == expected
+        crate::crypto::constant_time_eq(token.as_bytes(), expected.as_bytes())
     } else {
         warn!("WS_AUTH_TOKEN not configured, allowing all WebSocket connections");
         true
