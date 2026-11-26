@@ -20,6 +20,7 @@ import { FreshnessBadge } from "@/components/ui/FreshnessBadge";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { logger } from "@/lib/logger";
+import { config } from "@/config";
 
 export interface ComponentHealthInfo {
   healthy: boolean;
@@ -78,10 +79,11 @@ export default function StatusPage() {
   const fetchHealth = useCallback(async () => {
     setError(null);
     try {
-      // First try standard backend health endpoint, then root /health
-      let res = await fetch("/api/v1/health");
+      // The health endpoints live on the backend, not the Next origin. Try
+      // the versioned path first, then the root /health alias.
+      let res = await fetch(`${config.apiUrl}/api/v1/health`);
       if (!res.ok) {
-        res = await fetch("/health");
+        res = await fetch(`${config.apiUrl}/health`);
       }
       if (!res.ok) {
         throw new Error(`Health endpoint returned HTTP ${res.status}`);
@@ -91,32 +93,12 @@ export default function StatusPage() {
       setLastUpdated(new Date());
     } catch (err) {
       logger.error("Failed to fetch system status:", err);
-      // Fallback state when running standalone in development / tests
-      const fallback: SystemHealthData = {
-        status: "healthy",
-        timestamp: new Date().toISOString(),
-        version: "0.1.0",
-        uptime_seconds: 432000,
-        checks: {
-          database: { healthy: true, response_time_ms: 12, message: null },
-          cache: { healthy: true, response_time_ms: 2, message: null },
-          rpc: { healthy: true, response_time_ms: 85, message: null },
-        },
-        network: {
-          network: "mainnet",
-          display_name: "Stellar Mainnet",
-          is_primary: true,
-        },
-        data_freshness: {
-          healthy: true,
-          lag_seconds: 18,
-          max_lag_seconds: 120,
-          last_ledger_close_time: new Date(Date.now() - 18000).toISOString(),
-          message: null,
-        },
-      };
-      setData(fallback);
-      setLastUpdated(new Date());
+      // Never paint a made-up "all healthy" report when the API cannot be
+      // reached: a status page must show the outage.
+      setData(null);
+      setError(
+        err instanceof Error ? err.message : "Unable to reach the PayRaider API",
+      );
     } finally {
       setLoading(false);
     }
