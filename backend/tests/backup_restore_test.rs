@@ -8,7 +8,47 @@ use payraider_backend::backup::{BackupConfig, BackupManager};
 use std::path::Path;
 use tempfile::tempdir;
 
-const LIVE_CONTENTS: &[u8] = b"SQLite format 3\0payraider-live-data";
+const LIVE_VALUE: &str = "payraider-live-data";
+
+/// Writes a real SQLite database holding one known row. Backups are taken
+/// with `VACUUM INTO`, so the source must be a genuine database.
+async fn seed_live_db(path: &Path) {
+    let opts = sqlx::sqlite::SqliteConnectOptions::new()
+        .filename(path)
+        .create_if_missing(true);
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(opts)
+        .await
+        .expect("open live db");
+    sqlx::query("CREATE TABLE data (v TEXT NOT NULL)")
+        .execute(&pool)
+        .await
+        .expect("create table");
+    sqlx::query("INSERT INTO data (v) VALUES (?)")
+        .bind(LIVE_VALUE)
+        .execute(&pool)
+        .await
+        .expect("insert row");
+    pool.close().await;
+}
+
+async fn read_value(path: &Path) -> String {
+    let opts = sqlx::sqlite::SqliteConnectOptions::new()
+        .filename(path)
+        .read_only(true);
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(opts)
+        .await
+        .expect("open db");
+    let (v,): (String,) = sqlx::query_as("SELECT v FROM data")
+        .fetch_one(&pool)
+        .await
+        .expect("read row");
+    pool.close().await;
+    v
+}
 
 fn config(db_path: &Path, backup_dir: &Path) -> BackupConfig {
     BackupConfig {
@@ -26,9 +66,7 @@ async fn backup_then_restore_preserves_data() {
     let dir = tempdir().expect("tempdir");
     let db_path = dir.path().join("payraider.db");
     let backup_dir = dir.path().join("backups");
-    tokio::fs::write(&db_path, LIVE_CONTENTS)
-        .await
-        .expect("seed live db");
+    seed_live_db(&db_path).await;
 
     let manager = BackupManager::new(config(&db_path, &backup_dir));
 
@@ -51,10 +89,10 @@ async fn backup_then_restore_preserves_data() {
         .expect("restore should succeed");
 
     // 4. Verify data integrity after restore.
-    let restored = tokio::fs::read(&db_path).await.expect("read restored db");
     assert_eq!(
-        restored, LIVE_CONTENTS,
-        "restored database should byte-for-byte match the pre-incident state"
+        read_value(&db_path).await,
+        LIVE_VALUE,
+        "restored database should contain the pre-incident data"
     );
 }
 
@@ -63,9 +101,7 @@ async fn verify_backup_accepts_a_freshly_created_backup() {
     let dir = tempdir().expect("tempdir");
     let db_path = dir.path().join("payraider.db");
     let backup_dir = dir.path().join("backups");
-    tokio::fs::write(&db_path, LIVE_CONTENTS)
-        .await
-        .expect("seed live db");
+    seed_live_db(&db_path).await;
 
     let manager = BackupManager::new(config(&db_path, &backup_dir));
     let backup_path = manager
@@ -91,9 +127,7 @@ async fn verify_backup_flags_a_corrupted_backup() {
     let dir = tempdir().expect("tempdir");
     let db_path = dir.path().join("payraider.db");
     let backup_dir = dir.path().join("backups");
-    tokio::fs::write(&db_path, LIVE_CONTENTS)
-        .await
-        .expect("seed live db");
+    seed_live_db(&db_path).await;
 
     let manager = BackupManager::new(config(&db_path, &backup_dir));
     let backup_path = manager

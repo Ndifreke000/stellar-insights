@@ -8,6 +8,9 @@ use tokio::task::JoinHandle;
 
 use crate::crypto::EncryptionService;
 
+/// Every SQLite database file starts with this 16-byte header.
+const SQLITE_HEADER: &[u8] = b"SQLite format 3\0";
+
 #[derive(Debug, Clone)]
 pub struct BackupConfig {
     pub enabled: bool,
@@ -105,38 +108,45 @@ impl BackupManager {
         let temp_path = Path::new(&self.config.backup_dir).join(&temp_filename);
         let final_path = Path::new(&self.config.backup_dir).join(&backup_filename);
 
-        // Step 1: Create consistent backup using SQLite online backup API
-        // Open the destination DB and use the BACKUP command to copy from source
-        let dest_url = format!("sqlite://{}", temp_path.display());
+        // Step 1: Create a consistent snapshot of the live database.
+        // `VACUUM INTO` reads the source inside a single read transaction, so
+        // the copy is consistent even while other connections are writing
+        // (unlike a raw file copy, which can capture a torn WAL state).
+        tokio::fs::metadata(&self.config.db_path)
+            .await
+            .with_context(|| format!("Source database '{}' not found", self.config.db_path))?;
 
-        let dest_pool = sqlx::sqlite::SqlitePoolOptions::new()
+        let source_opts = sqlx::sqlite::SqliteConnectOptions::new()
+            .filename(&self.config.db_path)
+            .read_only(true);
+        let source_pool = sqlx::sqlite::SqlitePoolOptions::new()
             .max_connections(1)
-            .connect(&dest_url)
+            .connect_with(source_opts)
             .await
-            .context("Failed to open backup database for writing")?;
+            .with_context(|| {
+                format!("Failed to open source database '{}'", self.config.db_path)
+            })?;
 
-        // The BACKUP command in SQLite copies from the source database to the current database
-        // The source database is specified in the command using the file path
-        let backup_sql = format!(
-            "BACKUP TO '{}'",
-            temp_path.display().to_string().replace("'", "''")
-        );
-        sqlx::query(sqlx::AssertSqlSafe(backup_sql))
-            .execute(&dest_pool)
-            .await
-            .context("Failed to create backup using SQLite BACKUP API")?;
+        let _ = tokio::fs::remove_file(&temp_path).await;
+        let vacuum_result = sqlx::query("VACUUM INTO ?")
+            .bind(temp_path.to_string_lossy().into_owned())
+            .execute(&source_pool)
+            .await;
+        source_pool.close().await;
+        vacuum_result.with_context(|| {
+            format!(
+                "Failed to snapshot '{}' into '{}'",
+                self.config.db_path,
+                temp_path.display()
+            )
+        })?;
 
-        // Close connection
-        dest_pool.close().await;
-
-        // Step 2: Compute checksum
         let bytes = tokio::fs::read(&temp_path).await.with_context(|| {
             format!("Failed to read temporary backup '{}'", temp_path.display())
         })?;
-        let digest = Sha256::digest(&bytes);
-        let checksum = hex::encode(digest);
 
-        // Step 3: Optionally encrypt the backup
+        // Step 2: Optionally encrypt the backup. The stored form is the
+        // textual `EncryptedData` encoding of the hex-encoded snapshot.
         let final_bytes = if let Some(ref key_hex) = self.config.encryption_key {
             let service = EncryptionService::new(key_hex).with_context(|| {
                 "Failed to initialize encryption service with BACKUP_ENCRYPTION_KEY"
@@ -144,15 +154,14 @@ impl BackupManager {
             let encrypted = service
                 .encrypt(&hex::encode(&bytes))
                 .context("Failed to encrypt backup")?;
-            // Encode encrypted data as bytes for storage
-            let encrypted_str = format!(
-                "{}:{}:{}",
-                encrypted.key_version, encrypted.nonce, encrypted.ciphertext
-            );
-            hex::decode(encrypted_str).unwrap_or(bytes) // Fallback to unencrypted if decode fails
+            encrypted.to_string().into_bytes()
         } else {
             bytes
         };
+
+        // Step 3: Checksum the bytes exactly as stored, so verify_backup
+        // (which hashes the file on disk) can validate encrypted backups too.
+        let checksum = hex::encode(Sha256::digest(&final_bytes));
 
         // Step 4: Write final backup
         tokio::fs::write(&temp_path, final_bytes)
@@ -383,45 +392,33 @@ impl BackupManager {
         Ok(ok)
     }
 
-    /// Check if a backup is encrypted by looking for the encryption marker
+    /// A backup is encrypted when a key is configured and the file is not a
+    /// plain SQLite database (which always starts with the SQLite header).
     fn is_backup_encrypted(&self, bytes: &[u8]) -> bool {
-        // Check if BACKUP_ENCRYPTION_KEY is set, which indicates encryption is enabled
-        self.config.encryption_key.is_some()
-            // Also check if the file starts with an encryption header pattern
-            // Encrypted backups will have hex-encoded data that starts with a version number
-            && bytes.len() > 10
+        self.config.encryption_key.is_some() && !bytes.starts_with(SQLITE_HEADER)
     }
 
-    /// Decrypt a backup if it's encrypted
+    /// Decrypt a backup produced by `create_backup` if it is encrypted;
+    /// plain SQLite files are returned unchanged.
     fn decrypt_backup_if_needed(&self, bytes: &[u8]) -> Result<Vec<u8>> {
-        if let Some(ref key_hex) = self.config.encryption_key {
-            let service = EncryptionService::new(key_hex)
-                .with_context(|| "Failed to initialize encryption service for decryption")?;
-
-            // Try to decode as encrypted format (version:nonce:ciphertext as hex)
-            let encrypted_str = hex::encode(bytes);
-            let encrypted_data: crate::crypto::EncryptedData = encrypted_str
-                .parse()
-                .or_else(|_| {
-                    // Try parsing as standard format
-                    let parts: Vec<&str> = encrypted_str.splitn(3, ':').collect();
-                    if parts.len() == 3 {
-                        Ok(crate::crypto::EncryptedData {
-                            key_version: parts[0].parse()?,
-                            nonce: parts[1].to_string(),
-                            ciphertext: parts[2].to_string(),
-                        })
-                    } else {
-                        Err(anyhow::anyhow!("Invalid encrypted data format"))
-                    }
-                })
-                .with_context(|| "Failed to parse encrypted backup data")?;
-
-            let decrypted = service.decrypt(&encrypted_data)?;
-            Ok(decrypted.as_bytes().to_vec())
-        } else {
-            Ok(bytes.to_vec())
+        let Some(ref key_hex) = self.config.encryption_key else {
+            return Ok(bytes.to_vec());
+        };
+        if !self.is_backup_encrypted(bytes) {
+            return Ok(bytes.to_vec());
         }
+
+        let service = EncryptionService::new(key_hex)
+            .with_context(|| "Failed to initialize encryption service for decryption")?;
+        let text = std::str::from_utf8(bytes).context("Encrypted backup is not valid UTF-8")?;
+        let encrypted: crate::crypto::EncryptedData = text
+            .trim()
+            .parse()
+            .map_err(|e| anyhow::anyhow!("Failed to parse encrypted backup data: {e}"))?;
+        let decrypted_hex = service
+            .decrypt(&encrypted)
+            .map_err(|e| anyhow::anyhow!("Failed to decrypt backup: {e}"))?;
+        hex::decode(decrypted_hex.trim()).context("Decrypted backup is not valid hex")
     }
 
     /// Re-hashes every earlier snapshot that has a `.sha256` sidecar and compares the
@@ -748,6 +745,44 @@ fn duration_until_next_hour(hour_utc: u32) -> std::time::Duration {
 mod tests {
     use super::*;
 
+    /// Creates a real SQLite database containing one known row.
+    async fn seed_sqlite(path: &Path) {
+        let opts = sqlx::sqlite::SqliteConnectOptions::new()
+            .filename(path)
+            .create_if_missing(true);
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(opts)
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE t (v TEXT NOT NULL)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO t (v) VALUES ('sqlite-data')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        pool.close().await;
+    }
+
+    async fn read_row(path: &Path) -> String {
+        let opts = sqlx::sqlite::SqliteConnectOptions::new()
+            .filename(path)
+            .read_only(true);
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(opts)
+            .await
+            .unwrap();
+        let (v,): (String,) = sqlx::query_as("SELECT v FROM t")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        pool.close().await;
+        v
+    }
+
     #[test]
     fn parses_sqlite_path() {
         assert_eq!(
@@ -814,7 +849,7 @@ mod tests {
         let db_path = dir.path().join("source.db");
         let backup_dir = dir.path().join("backups");
 
-        tokio::fs::write(&db_path, b"sqlite-data").await.unwrap();
+        seed_sqlite(&db_path).await;
 
         let config = BackupConfig {
             enabled: true,
@@ -831,8 +866,7 @@ mod tests {
 
         let backup_path = result.unwrap();
         assert!(backup_path.exists());
-        let contents = tokio::fs::read(&backup_path).await.unwrap();
-        assert_eq!(contents, b"sqlite-data");
+        assert_eq!(read_row(&backup_path).await, "sqlite-data");
     }
 
     #[tokio::test]
@@ -878,7 +912,7 @@ mod tests {
         let db_path = dir.path().join("source.db");
         let backup_dir = dir.path().join("backups");
 
-        tokio::fs::write(&db_path, b"data").await.unwrap();
+        seed_sqlite(&db_path).await;
 
         let config = BackupConfig {
             enabled: true,
@@ -899,10 +933,7 @@ mod tests {
         let db_path = dir.path().join("source.db");
         let backup_dir = dir.path().join("backups");
 
-        // Create a valid SQLite database file
-        tokio::fs::write(&db_path, b"SQLite format 3\0")
-            .await
-            .unwrap();
+        seed_sqlite(&db_path).await;
 
         let config = BackupConfig {
             enabled: true,
@@ -929,6 +960,21 @@ mod tests {
         // Verify we can read the checksum
         let checksum = tokio::fs::read_to_string(&sidecar).await.unwrap();
         assert!(!checksum.is_empty());
+
+        // The stored file must actually be encrypted ...
+        let stored = tokio::fs::read(&backup_path).await.unwrap();
+        assert!(!stored.starts_with(SQLITE_HEADER));
+
+        // ... and must verify and decrypt back to the original database.
+        let verification = manager.verify_backup(&backup_path).await.unwrap();
+        assert!(verification.checksum_ok, "{:?}", verification.error);
+        assert!(verification.integrity_ok, "{:?}", verification.error);
+
+        let restored = dir.path().join("restored.db");
+        tokio::fs::write(&restored, manager.decrypt_backup_if_needed(&stored).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(read_row(&restored).await, "sqlite-data");
     }
 
     #[tokio::test]
@@ -990,9 +1036,7 @@ mod tests {
         let db_path = dir.path().join("source.db");
         let backup_dir = dir.path().join("backups");
 
-        // Create a minimal valid SQLite database file header
-        let sqlite_header = b"SQLite format 3\0";
-        tokio::fs::write(&db_path, sqlite_header).await.unwrap();
+        seed_sqlite(&db_path).await;
 
         let config = BackupConfig {
             enabled: true,
@@ -1011,6 +1055,6 @@ mod tests {
         assert!(result.is_ok());
         let verification = result.unwrap();
         assert!(verification.checksum_ok);
-        assert!(verification.integrity_ok || !verification.integrity_ok); // May fail due to minimal db
+        assert!(verification.integrity_ok, "{:?}", verification.error);
     }
 }
