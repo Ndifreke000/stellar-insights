@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { logger } from '@/lib/logger';
+import { config } from '@/config';
 import { Badge } from '@/components/ui/badge';
 import {  buttonVariants } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -39,7 +40,7 @@ export const OnChainVerification = ({ className = '' }: OnChainVerificationProps
 
     try {
       setError(null);
-      const response = await fetch('/api/analytics/verification-summary', {
+      const response = await fetch(`${config.apiUrl}/api/analytics/verification-summary`, {
         signal: controller.signal,
       });
 
