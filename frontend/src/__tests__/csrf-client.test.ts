@@ -30,6 +30,14 @@ describe('csrf-client', () => {
     expect(meta?.getAttribute('content')).toBe('meta-token-123');
   });
 
+  it('getCsrfToken keeps base64 padding in the cookie value', () => {
+    Object.defineProperty(document, 'cookie', {
+      writable: true,
+      value: 'theme=dark; csrf-token=YWJjZA==; other=1',
+    });
+    expect(getCsrfToken()).toBe('YWJjZA==');
+  });
+
   it('getCsrfToken prefers meta tag over cookie', () => {
     updateCsrfTokenMeta('meta-token');
     expect(getCsrfToken()).toBe('meta-token');

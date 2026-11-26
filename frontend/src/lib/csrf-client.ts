@@ -15,9 +15,13 @@ export function getCsrfTokenFromMeta(): string | null {
 export function getCsrfTokenFromCookie(): string | null {
   const cookies = document.cookie.split(';');
   for (const cookie of cookies) {
-    const [name, value] = cookie.trim().split('=');
-    if (name === 'csrf-token') {
-      return decodeURIComponent(value);
+    // Split on the first '=' only: base64 tokens end in '=' padding, which a
+    // plain split('=') silently dropped (and the server then rejected).
+    const trimmed = cookie.trim();
+    const eq = trimmed.indexOf('=');
+    if (eq === -1) continue;
+    if (trimmed.slice(0, eq) === 'csrf-token') {
+      return decodeURIComponent(trimmed.slice(eq + 1));
     }
   }
   return null;
