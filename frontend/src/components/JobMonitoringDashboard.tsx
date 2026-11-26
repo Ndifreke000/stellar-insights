@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { config } from "@/config";
 import { AlertTriangle, CheckCircle, Clock, Activity, AlertCircle, TrendingUp, TrendingDown } from "lucide-react";
 
 interface JobStatus {
@@ -47,7 +48,7 @@ export function JobMonitoringDashboard() {
 
   const fetchJobStatus = async () => {
     try {
-      const response = await fetch("/api/v1/jobs/status");
+      const response = await fetch(`${config.apiUrl}/api/v1/jobs/status`);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
